@@ -7,6 +7,7 @@ import { RulesPanel } from './components/RulesPanel.jsx';
 import { TrafficPanel } from './components/TrafficPanel.jsx';
 import { usePolling } from './hooks/usePolling.js';
 import { SettingsPanel } from './components/SettingsPanel.jsx';
+import { DecisionChart } from './components/DecisionChart.jsx';
 import { Globe2, Network, Settings2, ShieldCheck, X } from 'lucide-react';
 
 async function loadEdges() {
@@ -182,6 +183,7 @@ function Console({ settingsOpen, setSettingsOpen }) {
   return (
     <main className="page console" id="console">
       {settingsOpen && <SettingsPanel edges={edges} onClose={() => setSettingsOpen(false)} />}
+      <DecisionChart edges={edges} />
       <section className="edge-grid" aria-label="Edge nodes">
         {edges.map((edge) => (
           <EdgeCard key={edge.id} edge={edge} />

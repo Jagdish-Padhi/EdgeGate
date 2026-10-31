@@ -128,7 +128,23 @@ h3 { font-weight: 650; letter-spacing: -0.012em; line-height: 1.25; }
 
 .edge-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
 .two-column { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
-
+.decision-chart { gap: 12px; }
+.chart-switcher { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-soft); }
+.chart-switcher button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 0; color: var(--muted); background: transparent; font-size: 0.75rem; }
+.chart-switcher button.active { color: var(--ink); background: var(--surface); box-shadow: 0 1px 3px rgba(28, 66, 103, 0.12); }
+.chart-frame { width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: linear-gradient(180deg, #fbfdff 0%, #f5f9fc 100%); }
+.decision-plot { display: block; width: 100%; min-width: 520px; height: auto; }
+.chart-gridline { stroke: #dce7f0; stroke-width: 1; }
+.chart-axis { stroke: #9db4c8; stroke-width: 1; }
+.chart-axis-label, .chart-axis-title { fill: var(--muted); font-size: 10px; }
+.chart-axis-title { font-weight: 650; }
+.chart-series { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.chart-point { stroke: var(--surface); stroke-width: 2; }
+.chart-empty { fill: var(--muted); font-size: 12px; text-anchor: middle; }
+.chart-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 0.76rem; }
+.chart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.chart-legend i { width: 8px; height: 8px; border-radius: 50%; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 14px; align-content: start; box-shadow: 0 8px 24px rgba(28, 66, 103, 0.09); }
 .panel, .feature-card, .architecture-node {
   border-color: transparent;
@@ -230,6 +246,7 @@ input[type='number'] { width: 90px; }
   .footer { align-items: flex-start; flex-wrap: wrap; }
   .footer .brand + span { padding-left: 0; border-left: 0; }
   .footer-meta { width: 100%; margin-left: 0; }
+  .chart-footer { align-items: flex-start; flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
   .seg, .flow-arrow, .sync-line, .panel, .feature-card, .architecture-node, .status-dot, .spin { transition: none; animation: none; }
