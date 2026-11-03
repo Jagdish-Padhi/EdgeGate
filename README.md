@@ -10,8 +10,6 @@ It demonstrates the core distributed-systems trade-off:
 > Keep the request path local and fast without turning each region into an
 > independent, globally inaccurate rate limiter.
 
-This repository is the Group 12 CA1 SSD micro-project implementation.
-
 ## What it demonstrates
 
 - Multiple regional edge nodes in front of one protected origin API.
@@ -52,7 +50,7 @@ Read the complete design, data flow, failure handling, and guarantees in
 - Node.js 20 or newer
 - npm
 - Docker only if using local MongoDB
-- MongoDB Atlas or local MongoDB for durable mode
+- MongoDB Atlas or local MongoDB
 
 ## Install
 
@@ -64,23 +62,14 @@ The root workspace installs dependencies for both `server/` and `client/`.
 
 ## Run locally
 
-### Fast demo without MongoDB
-
-This mode uses the in-memory coordinator store. State is lost if the
-coordinator restarts.
-
-```bash
-npm run dev:memory
-```
-
-### Durable demo with local MongoDB
+### Local MongoDB
 
 ```bash
 npm run db:up
 npm run dev
 ```
 
-### Durable demo with MongoDB Atlas
+### MongoDB Atlas
 
 Copy the server environment template:
 
@@ -91,7 +80,6 @@ copy .env.example .env
 Set the Atlas connection string in `.env`:
 
 ```env
-STORE=mongo
 MONGO_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
 MONGO_DB=edgegate
 ```
@@ -115,6 +103,8 @@ The server supervisor starts:
 | Virginia edge | `4203` | Regional admission node |
 
 The supervisor restarts a child process after a crash.
+The dashboard Settings panel can change the restart delay live; the default is
+1500 ms. The local supervisor exposes this control on port `4300`.
 
 ## Run the dashboard
 
@@ -140,9 +130,11 @@ The server template is [.env.example](.env.example). Important values:
 
 | Variable | Default | Description |
 |---|---:|---|
-| `STORE` | `mongo` | `mongo` or `memory` |
 | `MONGO_URI` | local Mongo URI | MongoDB or Atlas connection string |
 | `MONGO_DB` | `edgegate` | Database name |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
+| `DEMO_LOGIN_EMAIL` | unset | Optional origin demo login email |
+| `DEMO_LOGIN_PASSWORD` | unset | Optional origin demo login password |
 | `ORIGIN_PORT` | `4100` | Origin API port |
 | `COORDINATOR_PORT` | `4000` | Coordinator port |
 | `EDGE_SYNC_INTERVAL_MS` | `1000` | Normal edge synchronization interval |
@@ -150,6 +142,8 @@ The server template is [.env.example](.env.example). Important values:
 | `EDGE_SYNC_JITTER_MS` | `0` | Random delay variation |
 | `EDGE_SYNC_LOSS_RATE` | `0` | Lost coordinator reply rate from `0` to `1` |
 | `EDGE_FAIL_MODE` | `bounded` | `bounded`, `open`, or `closed` |
+| `NODE_RESTART_DELAY_MS` | `1500` | Initial delay before the supervisor restarts a crashed node |
+| `DEV_CONTROL_PORT` | `4300` | Local supervisor settings endpoint |
 
 Synchronization conditions can also be changed live from the dashboard
 Settings panel. They affect the control path only; local admission remains
@@ -208,7 +202,7 @@ Seed API keys:
 
 ## Recommended professor demo
 
-1. Start `npm run dev:memory` and `npm run dashboard`.
+1. Start MongoDB with `npm run db:up`, then run `npm run dev` and `npm run dashboard`.
 2. Open the landing page and explain the local request path and shared quota.
 3. Open the live console.
 4. Send 60 free-plan requests across all three edges.
@@ -256,7 +250,7 @@ The test suite covers:
 - Rule propagation
 - HTTP edge, coordinator, and origin behavior
 - Module dependency boundaries
-- In-memory KV eviction and expiry
+- Edge-local KV eviction and expiry
 
 ## Repository layout
 
@@ -268,7 +262,7 @@ server/
     rules/        rule schema, defaults, and request-key resolution
     edge/         admission, leases, sync client, proxy, HTTP app
     coordinator/  batch processing, allocation, rule distribution
-    store/        memory and MongoDB persistence
+    store/        MongoDB persistence
     chaos/        controlled network fault injection
     origin/       protected demo API
   bin/            runtime entry points and process supervisor

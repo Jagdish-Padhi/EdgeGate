@@ -4,7 +4,7 @@ import { createCoordinator } from '../../src/coordinator/index.js';
 import { createEdgeNode } from '../../src/edge/index.js';
 import { createOriginApp } from '../../src/origin/index.js';
 import { silentLogger, systemClock } from '../../src/shared/index.js';
-import { MemoryStore } from '../../src/store/index.js';
+import { TestStore } from '../helpers/test-store.js';
 
 const servers = [];
 
@@ -21,7 +21,7 @@ let node;
 before(async () => {
   const origin = await listen(createOriginApp());
   const coordinator = await createCoordinator({
-    store: new MemoryStore(),
+    store: new TestStore(),
     clock: systemClock,
     log: silentLogger,
   });
@@ -74,7 +74,7 @@ test('login attempts are limited per ip and bodies reach the origin', async () =
     fetch(`${edgeUrl}/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'demo@edgegate.dev', password: 'wrong' }),
+      body: JSON.stringify({ email: 'invalid@example.test', password: 'invalid' }),
     });
   const first = await attempt();
   assert.equal(first.status, 401);

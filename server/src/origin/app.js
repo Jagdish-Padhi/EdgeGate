@@ -7,7 +7,10 @@ const ORDERS = [
 ];
 
 /** Stand-in for the protected API that sits behind the edge nodes. */
-export function createOriginApp() {
+export function createOriginApp({
+  loginEmail = process.env.DEMO_LOGIN_EMAIL,
+  loginPassword = process.env.DEMO_LOGIN_PASSWORD,
+} = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json());
@@ -16,7 +19,7 @@ export function createOriginApp() {
 
   app.post('/auth/login', (req, res) => {
     const { email, password } = req.body ?? {};
-    if (email === 'demo@edgegate.dev' && password === 'correct-horse') {
+    if (email === loginEmail && password === loginPassword) {
       return res.json({ token: 'demo-session-token' });
     }
     return res.status(401).json({ error: 'invalid_credentials' });

@@ -1,4 +1,4 @@
-import { silentLogger } from '../shared/index.js';
+import { errorFields, silentLogger } from '../shared/index.js';
 
 /**
  * Periodically ships usage to the coordinator and installs the leases it returns.
@@ -96,7 +96,7 @@ export class SyncClient {
       if (err.permanent) this.inflight = null;
       const failures = this.health.consecutiveFailures + 1;
       this.health = { ...this.health, lastError: err.message, consecutiveFailures: failures };
-      if (failures === 1) this.log.warn('sync failed', { error: err.message });
+      if (failures === 1) this.log.warn('sync failed', errorFields(err));
     } finally {
       this.running = null;
     }

@@ -7,7 +7,8 @@ const log = createLogger(config.id);
 
 const node = createEdgeNode({ config, log });
 const server = node.app.listen(config.port, () => {
-  log.info(`edge listening on ${config.port}`, {
+  log.info(`server running on port ${config.port}`, {
+    node: config.id,
     syncIntervalMs: config.syncIntervalMs,
     failMode: config.failMode,
   });

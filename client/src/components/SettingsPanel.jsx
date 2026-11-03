@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { putJson } from '../api/http.js';
+import { getJson, putJson } from '../api/http.js';
+import { DEV_CONTROL_URL } from '../config.js';
 import { Check, LoaderCircle, X } from 'lucide-react';
 
-const defaults = { latencyMs: 0, jitterMs: 0, lostResponseRate: 0, syncIntervalMs: 1000 };
+const defaults = { latencyMs: 0, jitterMs: 0, lostResponseRate: 0, syncIntervalMs: 1000, restartDelayMs: 1500 };
 
 export function SettingsPanel({ edges, onClose }) {
   const [values, setValues] = useState(defaults);
@@ -20,6 +21,9 @@ export function SettingsPanel({ edges, onClose }) {
         lostResponseRate: state.faults.lostResponseRate,
         syncIntervalMs: state.sync.intervalMs,
       });
+      void getJson(`${DEV_CONTROL_URL}/settings`)
+        .then((settings) => setValues((current) => ({ ...current, restartDelayMs: settings.restartDelayMs })))
+        .catch(() => {});
       initialized.current = true;
     }
   }, [edges]);
@@ -32,9 +36,10 @@ export function SettingsPanel({ edges, onClose }) {
   }, [values]);
 
   async function apply() {
-    const results = await Promise.allSettled(
-      edges.map((edge) => putJson(`${edge.url}/_edge/faults`, values))
-    );
+    const results = await Promise.allSettled([
+      ...edges.map((edge) => putJson(`${edge.url}/_edge/faults`, values)),
+      putJson(`${DEV_CONTROL_URL}/settings`, { restartDelayMs: values.restartDelayMs }),
+    ]);
     const failed = results.filter((result) => result.status === 'rejected').length;
     dirty.current = false;
     setSaveState(failed === 0 ? 'saved' : 'error');
@@ -69,6 +74,9 @@ export function SettingsPanel({ edges, onClose }) {
         </label>
         <label>Sync interval (ms)
           <input type="number" min="100" max="10000" step="100" value={values.syncIntervalMs} onChange={(event) => update('syncIntervalMs', Number(event.target.value))} />
+        </label>
+        <label>Node restart delay (ms)
+          <input type="number" min="0" max="60000" step="100" value={values.restartDelayMs} onChange={(event) => update('restartDelayMs', Number(event.target.value))} />
         </label>
         <div className="settings-actions">
           {saveState === 'saving' && <span className="save-status"><LoaderCircle size={14} className="spin" />Updating</span>}

@@ -1,7 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { RuleSetError } from '../rules/index.js';
-import { asyncHandler, crashHandler } from '../shared/index.js';
+import { asyncHandler, crashHandler, errorFields } from '../shared/index.js';
 import { BadBatchError } from './errors.js';
 
 export function createCoordinatorApp({ service, log }) {
@@ -47,7 +47,7 @@ export function createCoordinatorApp({ service, log }) {
     if (err instanceof BadBatchError || err instanceof RuleSetError) {
       return res.status(400).json({ error: err.message });
     }
-    log.error('unhandled error', { message: err.message });
+    log.error('request failed', errorFields(err));
     return res.status(500).json({ error: 'internal error' });
   });
 

@@ -52,9 +52,6 @@ function Navbar({ view, onSettings, settingsOpen }) {
           </>
         ) : (
           <>
-            <a href="#console">Console</a>
-            <a href="#traffic">Traffic</a>
-            <a href="#limits">Limits</a>
             <button type="button" className="nav-button icon-button" onClick={onSettings} aria-pressed={settingsOpen}>
               {settingsOpen ? <X size={15} aria-hidden="true" /> : <Settings2 size={15} aria-hidden="true" />}
               {settingsOpen ? 'Close settings' : 'Settings'}
@@ -205,7 +202,7 @@ function Footer() {
     <footer className="footer">
       <a className="brand" href="#overview">EdgeGate</a>
       <span>Edge-based distributed rate limiting</span>
-      <span className="footer-meta">Group 12 · Systems design project</span>
+      <span className="footer-meta">MongoDB-backed coordinator</span>
     </footer>
   );
 }

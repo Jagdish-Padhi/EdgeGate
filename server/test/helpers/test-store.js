@@ -1,20 +1,13 @@
-import { systemClock } from '../shared/index.js';
-
-const SWEEP_EVERY_WRITES = 500;
-
-/** Non-durable store for tests, benchmarks and running without MongoDB. */
-export class MemoryStore {
-  constructor({ clock = systemClock } = {}) {
+export class TestStore {
+  constructor({ clock } = {}) {
     this.clock = clock;
     this.usage = new Map();
     this.leases = new Map();
     this.batches = new Map();
     this.ruleSet = null;
-    this.writes = 0;
   }
 
   async init() {}
-
   async close() {}
 
   async addUsage(key, bucketId, amount, expiresAt) {
@@ -23,7 +16,6 @@ export class MemoryStore {
     entry.count += amount;
     entry.expiresAt = expiresAt;
     this.usage.set(id, entry);
-    this.#maybeSweep();
   }
 
   async getWindowCounts(key, bucketId) {
@@ -33,7 +25,6 @@ export class MemoryStore {
     };
   }
 
-  /** Returns true the first time a batch identity is seen, false for replays. */
   async claimBatch(nodeId, epoch, seq, expiresAt) {
     const id = `${nodeId}#${epoch}#${seq}`;
     if (this.batches.has(id)) return false;
@@ -46,11 +37,7 @@ export class MemoryStore {
   }
 
   async listLeases(key, now) {
-    const live = [];
-    for (const lease of this.leases.values()) {
-      if (lease.key === key && lease.expiresAt > now) live.push({ ...lease });
-    }
-    return live;
+    return [...this.leases.values()].filter((lease) => lease.key === key && lease.expiresAt > now);
   }
 
   async getRuleSet() {
@@ -59,14 +46,5 @@ export class MemoryStore {
 
   async saveRuleSet(ruleSet) {
     this.ruleSet = structuredClone(ruleSet);
-  }
-
-  #maybeSweep() {
-    this.writes += 1;
-    if (this.writes % SWEEP_EVERY_WRITES !== 0) return;
-    const now = this.clock.now();
-    for (const [id, entry] of this.usage) if (entry.expiresAt <= now) this.usage.delete(id);
-    for (const [id, expiresAt] of this.batches) if (expiresAt <= now) this.batches.delete(id);
-    for (const [id, lease] of this.leases) if (lease.expiresAt <= now) this.leases.delete(id);
   }
 }

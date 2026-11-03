@@ -98,7 +98,7 @@ server/src/
   kv/           bounded LRU store with idle expiry              (no dependencies)
   rules/        schema validation, request resolution, defaults (no dependencies)
   chaos/        FaultInjector for the edge-to-coordinator link  (no dependencies)
-  store/        memory-store, mongo-store                       (shared)
+  store/        MongoDB persistence                              (shared)
   coordinator/  sync-service, keyed-mutex, batch validation, app (engine, rules, shared)
   edge/         enforcer, key-state, sync-client, admission, proxy, middleware, app, node
                                                                 (engine, kv, rules, chaos, shared)
@@ -128,13 +128,13 @@ npm test                 # node:test, no external services needed
 npm run bench            # accuracy (virtual time) and latency (real time) benchmarks
 npm run db:up            # MongoDB 7 via docker compose
 npm run dev              # origin, coordinator (Mongo), 3 edges
-npm run dev:memory       # same, in-memory store
+npm run dev              # origin, coordinator (Mongo), 3 edges
 npm run dashboard        # React dashboard on :5173
 ```
 
 ## 6. Demo script
 
-1. `npm run dev:memory`, `npm run dashboard`.
+1. `npm run db:up`, `npm run dev`, and `npm run dashboard`.
 2. Traffic panel: free plan, all edges, 60 requests. Global budget bar fills to 20 and never beyond; every edge shows `leased` mode.
 3. Send to Mumbai only. Idle edges' leases shrink and Mumbai receives the freed budget on the next syncs.
 4. Rules panel: lower the free limit to 5 and publish. Edges move to the new version within one sync interval.
@@ -148,7 +148,7 @@ npm run dashboard        # React dashboard on :5173
 Run in the build environment (Node 22):
 
 - `npm test`: 47 tests passing. They cover the engine, KV, rules, coordinator idempotency and lease reclamation, concurrent syncs, partitions, lost replies, restarts, fail modes, hot rule reload, module boundaries and the real HTTP path (edge, coordinator, origin as actual servers).
-- A multi-process smoke test of `npm run dev:memory` was done with curl: limiting across three edges, coordinator usage endpoint, CORS preflight for the dashboard, edge crash and automatic restart, live rule change.
+- A multi-process smoke test of the MongoDB-backed stack was done with curl: limiting across three edges, coordinator usage endpoint, CORS preflight for the dashboard, edge crash and automatic restart, live rule change.
 - `npm run build -w client` succeeds.
 
 Not verified:
@@ -189,7 +189,7 @@ Benchmark highlights (limit 100, 3 edges): without sync, 216 admitted on a skewe
 
 ## 10. Possible polish (in rough priority order)
 
-1. Shared store contract test run against both `MemoryStore` and `MongoStore`, plus a compose-based smoke test.
+1. MongoDB-backed store contract test, plus a compose-based smoke test.
 2. Export the Mermaid diagram in `docs/architecture.md` to an image for the Phase 1 submission and slides.
 3. Per-key lease history chart on the dashboard (leases are already returned by `/admin/usage`).
 4. A Workers-style adapter for the edge to show portability.

@@ -19,7 +19,6 @@ export function loadConfig(env = process.env) {
 
   return {
     store: {
-      kind: env.STORE ?? 'mongo',
       mongoUri: env.MONGO_URI ?? 'mongodb://localhost:27017',
       mongoDb: env.MONGO_DB ?? 'edgegate',
     },

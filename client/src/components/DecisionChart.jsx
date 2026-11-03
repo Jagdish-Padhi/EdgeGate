@@ -13,6 +13,15 @@ function linePath(points) {
   return points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
 }
 
+function lineSegments(points) {
+  return points.reduce((segments, point) => {
+    if (!point) return [...segments, []];
+    const current = segments.at(-1);
+    current.push(point);
+    return segments;
+  }, [[]]).filter((segment) => segment.length > 1);
+}
+
 function formatRate(value) {
   return value >= 10 ? Math.round(value) : value.toFixed(1);
 }
@@ -38,11 +47,15 @@ export function DecisionChart({ edges }) {
     }
 
     const elapsed = Math.max(0.1, (now - previous.current.at) / 1000);
+    const nextTotals = { ...previous.current.totals };
     const sample = {
       at: now,
+      online: Object.fromEntries(EDGES.map((edge) => [edge.id, Boolean(current[edge.id])])),
       rates: Object.fromEntries(EDGES.map((edge) => {
         const before = previous.current.totals[edge.id] ?? { allowed: 0, blocked: 0 };
-        const after = current[edge.id] ?? before;
+        const online = current[edge.id];
+        const after = online ?? before;
+        if (online) nextTotals[edge.id] = online;
         return [edge.id, {
           allowed: Math.max(0, after.allowed - before.allowed) / elapsed,
           blocked: Math.max(0, after.blocked - before.blocked) / elapsed,
@@ -50,7 +63,7 @@ export function DecisionChart({ edges }) {
       })),
     };
 
-    previous.current = { at: now, totals: current };
+    previous.current = { at: now, totals: nextTotals };
     setSamples((history) => [...history, sample].slice(-MAX_SAMPLES));
   }, [edges]);
 
@@ -64,7 +77,9 @@ export function DecisionChart({ edges }) {
     const series = EDGES.map((edge) => ({
       ...edge,
       color: COLORS[EDGES.indexOf(edge)],
-      points: samples.map((sample, index) => [x(index), y(sample.rates[edge.id]?.[metric] ?? 0)]),
+      points: samples.map((sample, index) => (
+        sample.online[edge.id] ? [x(index), y(sample.rates[edge.id]?.[metric] ?? 0)] : null
+      )),
     }));
     return { plotWidth, plotHeight, yMax, x, y, series };
   }, [metric, samples]);
@@ -113,9 +128,11 @@ export function DecisionChart({ edges }) {
           {!hasData && <text className="chart-empty" x={WIDTH / 2} y={HEIGHT / 2}>Send traffic to populate the graph</text>}
           {chart.series.map((series) => (
             <g key={series.id}>
-              {series.points.length > 1 && <path className="chart-series" d={linePath(series.points)} style={{ stroke: series.color }} />}
-              {latest && series.points.length > 0 && (
-                <circle className="chart-point" cx={series.points.at(-1)[0]} cy={series.points.at(-1)[1]} r="3.5" style={{ fill: series.color }}>
+              {lineSegments(series.points).map((segment, index) => (
+                <path key={index} className="chart-series" d={linePath(segment)} style={{ stroke: series.color }} />
+              ))}
+              {latest?.online[series.id] && series.points.at(-1) && (
+                <circle className="chart-point" cx={series.points.at(-1)[0]} cy={series.points.at(-1)[1]} r="3" style={{ fill: series.color }}>
                   <title>{`${series.region}: ${formatRate(latest.rates[series.id]?.[metric] ?? 0)} req/s`}</title>
                 </circle>
               )}
@@ -126,7 +143,10 @@ export function DecisionChart({ edges }) {
 
       <div className="chart-footer">
         <div className="chart-legend">
-          {chart.series.map((series) => <span key={series.id}><i style={{ background: series.color }} />{series.region}</span>)}
+          {chart.series.map((series) => {
+            const online = latest?.online[series.id] ?? true;
+            return <span key={series.id} className={online ? '' : 'offline'}><i style={{ background: series.color }} />{series.region}{online ? '' : ' (offline)'}</span>;
+          })}
         </div>
         <span className="muted">{hasData ? `Last ${samples.length} samples · ${metric} decisions/sec` : 'Waiting for edge counters'}</span>
       </div>

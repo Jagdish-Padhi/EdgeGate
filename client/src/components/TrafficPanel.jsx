@@ -12,7 +12,7 @@ const CLIENTS = {
     method: 'POST',
     path: '/auth/login',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'demo@edgegate.dev', password: 'wrong-password' }),
+    body: JSON.stringify({ email: 'invalid@example.test', password: 'invalid' }),
   },
 };
 

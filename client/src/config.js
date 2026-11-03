@@ -1,6 +1,7 @@
 const env = import.meta.env;
 
 export const COORDINATOR_URL = env.VITE_COORDINATOR_URL || 'http://localhost:4000';
+export const DEV_CONTROL_URL = env.VITE_DEV_CONTROL_URL || 'http://localhost:4300';
 
 export const EDGES = [
   { id: 'edge-mumbai', region: 'Mumbai', url: env.VITE_EDGE_MUMBAI_URL || 'http://localhost:4201' },

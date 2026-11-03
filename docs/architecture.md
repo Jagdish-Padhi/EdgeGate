@@ -51,7 +51,7 @@ The modules in `server/src` map onto the abstraction layer as follows.
 | `rules` | Rule schema, validation, request-to-key resolution |
 | `edge` | Enforcer, sync client, reverse proxy, admission flow |
 | `coordinator` | Sync service that applies usage and grants leases |
-| `store` | Persistence contract with MongoDB and in-memory implementations |
+| `store` | MongoDB persistence for global usage, leases, batches and rules |
 | `chaos` | Fault injection on the edge-to-coordinator link |
 | `origin` | Stand-in protected API |
 
@@ -93,7 +93,7 @@ The sliding-window counter is an approximation (current window plus a weighted s
 | Edge crashes | Restarts with empty memory and a new epoch; its previous lease is replaced on its first sync | Usage admitted since its last sync is lost, at most the lease it held |
 | Coordinator unreachable from one edge | Existing lease is honoured until it expires, then the edge uses its fail mode. `bounded`: a static share `floor(limit / peers)` enforced by a local sliding window. `open`: admit. `closed`: reject | `bounded` overshoots the global limit by at most one local share per partitioned edge. After healing, the retained batch is re-sent and usage reconciles |
 | Reply to a sync is lost | The edge re-sends the same batch with the same sequence number | Counted once because the coordinator rejects duplicate `(nodeId, epoch, seq)` |
-| Coordinator crashes | Edges keep deciding from their leases, then fall back as above. With MongoDB all coordinator state is durable, so a restart resumes where it stopped | With the in-memory store, usage is lost on restart |
+| Coordinator crashes | Edges keep deciding from their leases, then fall back as above. MongoDB keeps coordinator state durable, so a restart resumes where it stopped | Unsynced edge-local usage can still be lost before its next batch |
 | Edge starts before the coordinator | Boots with the bundled default rule set and uses its fail mode until the first sync succeeds | Rules and leases arrive on the first successful sync |
 | Concurrent syncs for one key | Serialized by a per-key mutex in the coordinator | One active coordinator is assumed |
 | Clock skew between edges | Window buckets are assigned by the coordinator clock on receipt; edges only use their clock for local refill and lease expiry | Lease hold time at the coordinator is longer than the edge's expiry, so skew cannot make both sides use the same lease |

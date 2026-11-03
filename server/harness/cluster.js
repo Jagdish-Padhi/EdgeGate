@@ -3,7 +3,7 @@ import { SyncService } from '../src/coordinator/index.js';
 import { Enforcer, SyncClient, admit } from '../src/edge/index.js';
 import { DEFAULT_RULE_SET } from '../src/rules/index.js';
 import { ManualClock, silentLogger } from '../src/shared/index.js';
-import { MemoryStore } from '../src/store/index.js';
+import { TestStore } from '../test/helpers/test-store.js';
 
 /**
  * In-process cluster: one coordinator and several edge nodes sharing a manual
@@ -16,7 +16,7 @@ export async function createCluster({
   ruleSet = DEFAULT_RULE_SET,
   clock = new ManualClock(1_000_000),
 } = {}) {
-  const store = new MemoryStore({ clock });
+  const store = new TestStore({ clock });
   const service = new SyncService({ store, clock, log: silentLogger });
   await service.init();
   if (ruleSet !== DEFAULT_RULE_SET) await service.replaceRuleSet(ruleSet);
