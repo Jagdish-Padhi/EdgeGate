@@ -29,13 +29,13 @@ function Toggle({ label, active, onClick, icon: Icon, inactiveIcon: InactiveIcon
   );
 }
 
-export function EdgeCard({ edge }) {
+export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
   const { state } = edge;
   const setFaults = (patch) => putJson(`${edge.url}/_edge/faults`, patch).catch(() => {});
   const sync = state ? syncSummary(state.sync, state.faults) : null;
 
   return (
-    <article className="panel">
+    <article className={`panel edge-node-panel ${activeEdgeId === edge.id ? (lastDecision?.status === 429 ? 'pulse-blocked' : 'pulse-active') : ''}`}>
       <div className="panel-head">
         <div>
           <h2><MapPin size={16} strokeWidth={1.8} aria-hidden="true" />{edge.region}</h2>
@@ -52,15 +52,15 @@ export function EdgeCard({ edge }) {
           <dl className="totals">
             <div>
               <dt>Allowed</dt>
-              <dd>{state.totals.allowed}</dd>
+              <dd className="stat-ok">{state.totals.allowed}</dd>
             </div>
             <div>
               <dt>Blocked</dt>
-              <dd>{state.totals.denied}</dd>
+              <dd className="stat-blocked">{state.totals.denied}</dd>
             </div>
             <div>
-              <dt>Rules version</dt>
-              <dd>{state.rulesVersion}</dd>
+              <dt>Lease Mode</dt>
+              <dd className="stat-mode">{displayMode(state.keys[0] || { mode: 'idle' }, state)}</dd>
             </div>
           </dl>
 
@@ -110,14 +110,58 @@ export function EdgeCard({ edge }) {
                         <span className="sub">{rule}</span>
                       </td>
                       <td><span className={`mode ${displayMode(key, state)}`}>{modeLabel(displayMode(key, state))}</span></td>
-                      <td>{key.leaseRemaining ?? 'None'}</td>
-                      <td>{key.tokens} of {key.burst}</td>
+                      <td>
+                        <div className="meter-wrap">
+                          <span className="meter-text">{key.leaseRemaining ?? '0'} left</span>
+                          {key.limit ? (
+                            <div className="mini-bar-track" title={`${key.leaseRemaining ?? 0} lease tokens out of ${key.limit} limit`}>
+                              <div
+                                className="mini-bar-fill lease-fill"
+                                style={{ width: `${Math.min(100, Math.max(0, ((key.leaseRemaining ?? 0) / key.limit) * 100))}%` }}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="meter-wrap">
+                          <span className="meter-text">
+                            {key.tokens} / {key.burst}
+                            {key.tokens < key.burst && (
+                              <span className="refill-indicator" title="Tokens refilling in background steadily"> ⚡ Refilling</span>
+                            )}
+                          </span>
+                          <div className="mini-bar-track" title={`${key.tokens} burst tokens out of ${key.burst} burst cap`}>
+                            <div
+                              className="mini-bar-fill burst-fill"
+                              style={{ width: `${Math.min(100, Math.max(0, (key.tokens / (key.burst || 1)) * 100))}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+
+          {/* Chaos Fault Impact Alert */}
+          {state.faults.partitioned && (
+            <div className="fault-alert-banner alert-disconnect">
+              <strong>⚠️ Disconnected from Coordinator:</strong> Cannot fetch leases. Using emergency local safety quota (1/3 share) to avoid crashing.
+            </div>
+          )}
+          {state.faults.latencyMs > 0 && (
+            <div className="fault-alert-banner alert-slow">
+              <strong>🐢 Slow Network Active:</strong> +{state.faults.latencyMs}ms background sync lag.
+            </div>
+          )}
+          {state.faults.lostResponseRate > 0 && (
+            <div className="fault-alert-banner alert-drop">
+              <strong>📦 Dropped Replies Active:</strong> Simulating lost sync acknowledgments (60% loss).
+            </div>
+          )}
 
           <div className="fault-group" role="group" aria-label={`Simulate a problem on ${edge.region}`}>
             <div className="group-title">
