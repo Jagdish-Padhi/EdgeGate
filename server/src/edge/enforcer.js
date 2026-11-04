@@ -138,6 +138,11 @@ export class Enforcer {
     }
   }
 
+  reset() {
+    this.totals = { allowed: 0, denied: 0 };
+    this.kv.clear();
+  }
+
   sweep() {
     return this.kv.sweep();
   }

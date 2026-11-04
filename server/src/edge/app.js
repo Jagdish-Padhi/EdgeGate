@@ -24,6 +24,11 @@ export function createEdgeApp({ nodeId, enforcer, syncClient, faults, upstreamUr
       syncIntervalMs: syncClient.intervalMs,
     });
   });
+  app.post('/_edge/reset', (_req, res) => {
+    syncClient.reset();
+    faults.configure({ partitioned: false, latencyMs: 0, jitterMs: 0, lostResponseRate: 0 });
+    res.json({ ok: true, nodeId });
+  });
   app.post('/_edge/crash', crashHandler(log, nodeId));
 
   // Data plane: admission control, then reverse proxy to the origin.

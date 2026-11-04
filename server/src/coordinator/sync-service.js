@@ -119,6 +119,14 @@ export class SyncService {
     return next;
   }
 
+  async resetState() {
+    if (typeof this.store.resetAll === 'function') {
+      await this.store.resetAll();
+    }
+    this.log.info('coordinator state reset');
+    return { ok: true };
+  }
+
   /** Global view of one key for the dashboard; null if no node holds a lease for it. */
   async describeKey(key) {
     const now = this.clock.now();

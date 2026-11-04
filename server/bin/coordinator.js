@@ -11,6 +11,7 @@ let coordinator;
 try {
   coordinator = await createCoordinator({ store, clock: systemClock, log });
 } catch (error) {
+  log.error('MongoDB connection failed', errorFields(error));
   log.error('coordinator startup failed', errorFields(error));
   process.exitCode = 1;
 }

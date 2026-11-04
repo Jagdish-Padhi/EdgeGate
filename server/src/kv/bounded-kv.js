@@ -45,6 +45,10 @@ export class BoundedKV {
     return this.entries.delete(key);
   }
 
+  clear() {
+    this.entries.clear();
+  }
+
   values() {
     return Array.from(this.entries.values(), (entry) => entry.value);
   }

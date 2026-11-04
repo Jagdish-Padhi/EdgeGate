@@ -45,6 +45,12 @@ export class SyncClient {
     return this.intervalMs;
   }
 
+  reset() {
+    this.inflight = null;
+    this.seq = 0;
+    this.enforcer.reset();
+  }
+
   status() {
     return {
       ...this.health,
