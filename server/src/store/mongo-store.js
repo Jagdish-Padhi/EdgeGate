@@ -83,4 +83,12 @@ export class MongoStore {
   async saveRuleSet(ruleSet) {
     await this.rules.replaceOne({ _id: 'current' }, { _id: 'current', ...ruleSet }, { upsert: true });
   }
+
+  async resetAll() {
+    await Promise.all([
+      this.usage.deleteMany({}),
+      this.leases.deleteMany({}),
+      this.batches.deleteMany({}),
+    ]);
+  }
 }

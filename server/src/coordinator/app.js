@@ -41,6 +41,13 @@ export function createCoordinatorApp({ service, log }) {
     })
   );
 
+  app.post(
+    '/admin/reset',
+    asyncHandler(async (_req, res) => {
+      res.json(await service.resetState());
+    })
+  );
+
   app.post('/admin/crash', crashHandler(log, 'coordinator'));
 
   app.use((err, _req, res, _next) => {
