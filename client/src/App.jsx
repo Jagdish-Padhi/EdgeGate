@@ -1,33 +1,74 @@
-import { useEffect, useRef, useState } from 'react';
-import { getJson, postQuietly } from './api/http.js';
-import { COORDINATOR_URL, EDGES, POLL_INTERVAL_MS } from './config.js';
-import { EdgeCard } from './components/EdgeCard.jsx';
-import { GlobalUsage } from './components/GlobalUsage.jsx';
-import { CLIENTS, TrafficPanel } from './components/TrafficPanel.jsx';
-import { usePolling } from './hooks/usePolling.js';
-import { SettingsPanel } from './components/SettingsPanel.jsx';
-import { DecisionChart } from './components/DecisionChart.jsx';
-import { VisualPipeline } from './components/VisualPipeline.jsx';
-import { LiveActivityFeed } from './components/LiveActivityFeed.jsx';
-import { TheoryGuide } from './components/TheoryGuide.jsx';
-import { BookOpen, Eye, EyeOff, LayoutDashboard, RotateCcw, Settings2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from "react";
+import { getJson, postQuietly } from "./api/http.js";
+import { COORDINATOR_URL, EDGES, POLL_INTERVAL_MS } from "./config.js";
+import { EdgeCard } from "./components/EdgeCard.jsx";
+import { GlobalUsage } from "./components/GlobalUsage.jsx";
+import { CLIENTS, TrafficPanel } from "./components/TrafficPanel.jsx";
+import { usePolling } from "./hooks/usePolling.js";
+import { SettingsPanel } from "./components/SettingsPanel.jsx";
+import { DecisionChart } from "./components/DecisionChart.jsx";
+import { VisualPipeline } from "./components/VisualPipeline.jsx";
+import { LiveActivityFeed } from "./components/LiveActivityFeed.jsx";
+import { TheoryGuide } from "./components/TheoryGuide.jsx";
+import {
+  BookOpen,
+  Eye,
+  EyeOff,
+  LayoutDashboard,
+  RotateCcw,
+  Settings2,
+  X,
+} from "lucide-react";
 
 async function loadEdges() {
   return Promise.all(
     EDGES.map((edge) =>
       getJson(`${edge.url}/_edge/state`)
         .then((state) => ({ ...edge, online: true, state }))
-        .catch(() => ({ ...edge, online: false, state: null }))
-    )
+        .catch(() => ({ ...edge, online: false, state: null })),
+    ),
   );
+}
+
+function getAudioContext() {
+  const AudioContextConstructor =
+    window.AudioContext || window.webkitAudioContext;
+  return AudioContextConstructor ? new AudioContextConstructor() : null;
+}
+
+function playEdgeAlert(audioContext, blocked) {
+  if (!audioContext) return;
+
+  const startAt = audioContext.currentTime;
+  const firstTone = blocked ? 460 : 760;
+  const secondTone = blocked ? 310 : 540;
+  const toneLength = 0.09;
+  const gap = 0.045;
+  const gain = audioContext.createGain();
+  const oscillator = audioContext.createOscillator();
+
+  oscillator.type = "square";
+  oscillator.frequency.setValueAtTime(firstTone, startAt);
+  oscillator.frequency.setValueAtTime(secondTone, startAt + toneLength + gap);
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.24, startAt + 0.01);
+  gain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    startAt + toneLength * 2 + gap,
+  );
+
+  oscillator.connect(gain);
+  gain.connect(audioContext.destination);
+  oscillator.start(startAt);
+  oscillator.stop(startAt + toneLength * 2 + gap);
 }
 
 export function App() {
   const [view, setView] = useState(() => {
     const hash = window.location.hash;
-    if (hash === '#theory') return 'theory';
-    if (hash === '#console') return 'console';
-    return 'console';
+    if (hash === "#theory") return "theory";
+    if (hash === "#console") return "console";
+    return "console";
   });
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -37,12 +78,12 @@ export function App() {
   useEffect(() => {
     const onHashChange = () => {
       const hash = window.location.hash;
-      if (hash === '#theory') setView('theory');
-      else if (hash === '#console') setView('console');
-      else setView('console');
+      if (hash === "#theory") setView("theory");
+      else if (hash === "#console") setView("console");
+      else setView("console");
     };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   async function handleGlobalReset() {
@@ -50,7 +91,9 @@ export function App() {
     setResetting(true);
     try {
       await postQuietly(`${COORDINATOR_URL}/admin/reset`);
-      await Promise.all(EDGES.map((edge) => postQuietly(`${edge.url}/_edge/reset`)));
+      await Promise.all(
+        EDGES.map((edge) => postQuietly(`${edge.url}/_edge/reset`)),
+      );
       setLastResetAt(Date.now());
     } finally {
       setResetting(false);
@@ -68,8 +111,8 @@ export function App() {
         resetting={resetting}
       />
 
-      {view === 'theory' && <TheoryGuide />}
-      {view === 'console' && (
+      {view === "theory" && <TheoryGuide />}
+      {view === "console" && (
         <Console
           settingsOpen={settingsOpen}
           setSettingsOpen={setSettingsOpen}
@@ -84,21 +127,28 @@ export function App() {
   );
 }
 
-function Navbar({ view, setView, onSettings, settingsOpen, onReset, resetting }) {
+function Navbar({
+  view,
+  setView,
+  onSettings,
+  settingsOpen,
+  onReset,
+  resetting,
+}) {
   return (
     <header className="site-header">
       <nav className="navbar full-navbar" aria-label="Primary navigation">
-        <a className="brand" href="#console" onClick={() => setView('console')}>
+        <a className="brand" href="#console" onClick={() => setView("console")}>
           EdgeGate <span>Distributed rate limiting</span>
         </a>
 
         <div className="nav-links">
           <button
             type="button"
-            className={`nav-tab-btn ${view === 'console' ? 'active' : ''}`}
+            className={`nav-tab-btn ${view === "console" ? "active" : ""}`}
             onClick={() => {
-              window.location.hash = '#console';
-              setView('console');
+              window.location.hash = "#console";
+              setView("console");
             }}
           >
             <LayoutDashboard size={14} aria-hidden="true" /> Console
@@ -106,10 +156,10 @@ function Navbar({ view, setView, onSettings, settingsOpen, onReset, resetting })
 
           <button
             type="button"
-            className={`nav-tab-btn ${view === 'theory' ? 'active' : ''}`}
+            className={`nav-tab-btn ${view === "theory" ? "active" : ""}`}
             onClick={() => {
-              window.location.hash = '#theory';
-              setView('theory');
+              window.location.hash = "#theory";
+              setView("theory");
             }}
           >
             <BookOpen size={14} aria-hidden="true" /> Guide
@@ -122,19 +172,27 @@ function Navbar({ view, setView, onSettings, settingsOpen, onReset, resetting })
             disabled={resetting}
             title="Clear usage on every node and on the coordinator"
           >
-            <RotateCcw size={14} className={resetting ? 'spin' : ''} aria-hidden="true" />
-            {resetting ? 'Resetting' : 'Reset'}
+            <RotateCcw
+              size={14}
+              className={resetting ? "spin" : ""}
+              aria-hidden="true"
+            />
+            {resetting ? "Resetting" : "Reset"}
           </button>
 
           <button
             type="button"
-            className={`nav-button icon-button ${settingsOpen ? 'active' : ''}`}
+            className={`nav-button icon-button ${settingsOpen ? "active" : ""}`}
             onClick={onSettings}
             aria-pressed={settingsOpen}
             title="Change rate limits and network conditions"
           >
-            {settingsOpen ? <X size={15} aria-hidden="true" /> : <Settings2 size={15} aria-hidden="true" />}
-            {settingsOpen ? 'Close settings' : 'Settings'}
+            {settingsOpen ? (
+              <X size={15} aria-hidden="true" />
+            ) : (
+              <Settings2 size={15} aria-hidden="true" />
+            )}
+            {settingsOpen ? "Close settings" : "Settings"}
           </button>
         </div>
       </nav>
@@ -142,20 +200,58 @@ function Navbar({ view, setView, onSettings, settingsOpen, onReset, resetting })
   );
 }
 
-function Console({ settingsOpen, setSettingsOpen, onReset, resetting, lastResetAt }) {
+function Console({
+  settingsOpen,
+  setSettingsOpen,
+  onReset,
+  resetting,
+  lastResetAt,
+}) {
   const [polledEdges, refreshEdges] = usePolling(loadEdges, POLL_INTERVAL_MS);
-  const edges = polledEdges ?? EDGES.map((edge) => ({ ...edge, online: false }));
-  const keys = [...new Set(edges.flatMap((edge) => edge.state?.keys.map((key) => key.key) ?? []))];
+  const edges =
+    polledEdges ?? EDGES.map((edge) => ({ ...edge, online: false }));
+  const keys = [
+    ...new Set(
+      edges.flatMap((edge) => edge.state?.keys.map((key) => key.key) ?? []),
+    ),
+  ];
 
   const [lastEvent, setLastEvent] = useState(null);
   const [activeEdgeId, setActiveEdgeId] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
   const [totalStats, setTotalStats] = useState({ total: 0, ok: 0, blocked: 0 });
   const [running, setRunning] = useState(false);
-  const [simulationState, setSimulationState] = useState('idle');
-  const [trafficConfig, setTrafficConfig] = useState({ client: 'free', target: 'all', count: 30 });
+  const [simulationState, setSimulationState] = useState("idle");
+  const [trafficConfig, setTrafficConfig] = useState({
+    client: "free",
+    target: "all",
+    count: 30,
+  });
   const [showInspector, setShowInspector] = useState(false);
   const triggerRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const lastAlertAtRef = useRef(0);
+
+  useEffect(() => {
+    const warmAudio = () => {
+      if (!audioContextRef.current) {
+        audioContextRef.current = getAudioContext();
+      }
+      if (audioContextRef.current?.state === "suspended") {
+        audioContextRef.current.resume().catch((error) => {
+          console.warn("Edge alert sound is unavailable:", error);
+        });
+      }
+    };
+
+    window.addEventListener("pointerdown", warmAudio, { once: true });
+    window.addEventListener("keydown", warmAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", warmAudio);
+      window.removeEventListener("keydown", warmAudio);
+      audioContextRef.current?.close();
+    };
+  }, []);
 
   useEffect(() => {
     setActivityLogs([]);
@@ -168,6 +264,24 @@ function Console({ settingsOpen, setSettingsOpen, onReset, resetting, lastResetA
     setLastEvent(evt);
     setActiveEdgeId(evt.edgeId);
 
+    const now = performance.now();
+    if (now - lastAlertAtRef.current >= 180) {
+      lastAlertAtRef.current = now;
+      try {
+        if (!audioContextRef.current) {
+          audioContextRef.current = getAudioContext();
+        }
+        if (audioContextRef.current?.state === "suspended") {
+          audioContextRef.current.resume().catch((error) => {
+            console.warn("Edge alert sound is unavailable:", error);
+          });
+        }
+        playEdgeAlert(audioContextRef.current, evt.status === 429);
+      } catch (error) {
+        console.warn("Edge alert sound is unavailable:", error);
+      }
+    }
+
     setTotalStats((prev) => ({
       total: prev.total + 1,
       ok: prev.ok + (evt.status === 200 ? 1 : 0),
@@ -178,8 +292,14 @@ function Console({ settingsOpen, setSettingsOpen, onReset, resetting, lastResetA
       setActiveEdgeId((current) => (current === evt.edgeId ? null : current));
     }, 600);
 
-    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const level = evt.status === 200 ? 'ok' : evt.status === 429 ? 'blocked' : 'warn';
+    const time = new Date().toLocaleTimeString("en-US", {
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    const level =
+      evt.status === 200 ? "ok" : evt.status === 429 ? "blocked" : "warn";
     const message = `${evt.method} ${evt.path}`;
     const outcome = evt.status ? `${evt.status} ${evt.decision}` : evt.decision;
 
@@ -274,7 +394,7 @@ function Console({ settingsOpen, setSettingsOpen, onReset, resetting, lastResetA
           onClick={() => setShowInspector((prev) => !prev)}
         >
           {showInspector ? <EyeOff size={14} /> : <Eye size={14} />}
-          {showInspector ? 'Hide decision chart' : 'Show decision chart'}
+          {showInspector ? "Hide decision chart" : "Show decision chart"}
         </button>
       </div>
 
@@ -286,7 +406,7 @@ function Console({ settingsOpen, setSettingsOpen, onReset, resetting, lastResetA
 function Footer({ setView }) {
   return (
     <footer className="footer full-footer">
-      <a className="brand" href="#console" onClick={() => setView('console')}>
+      <a className="brand" href="#console" onClick={() => setView("console")}>
         EdgeGate
       </a>
       <span>Edge-based distributed rate limiting</span>
