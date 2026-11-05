@@ -1,0 +1,19 @@
+{
+  "name": "edgegate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Edge-based distributed rate limiting with lease-based global coordination",
+  "type": "module",
+  "workspaces": ["server", "client"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "npm run dev -w server",
+    "dashboard": "npm run dev -w client",
+    "test": "npm test -w server",
+    "bench": "npm run bench -w server",
+    "db:up": "docker compose up -d mongo"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  }
+}
