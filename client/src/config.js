@@ -10,7 +10,7 @@ function resolveServiceUrl(envVal, fallback) {
 const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
 export const COORDINATOR_URL = resolveServiceUrl(env.VITE_COORDINATOR_URL, isLocal ? 'http://localhost:4000' : 'https://edgegate.onrender.com');
-export const ORIGIN_URL = resolveServiceUrl(env.VITE_ORIGIN_URL, isLocal ? 'http://localhost:3000' : 'https://edgegate-origin.onrender.com');
+export const ORIGIN_URL = resolveServiceUrl(env.VITE_ORIGIN_URL, isLocal ? 'http://localhost:4100' : 'https://edgegate-origin.onrender.com');
 export const DEV_CONTROL_URL = resolveServiceUrl(env.VITE_DEV_CONTROL_URL, isLocal ? 'http://localhost:4300' : 'https://edgegate.onrender.com');
 
 export const EDGES = [
