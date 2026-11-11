@@ -74,11 +74,32 @@ export function WarmupModal({ isOpen, onComplete }) {
         const start = performance.now();
         try {
           const timeoutSignal = AbortSignal.timeout ? AbortSignal.timeout(9000) : undefined;
-          const res = await fetch(service.url, {
-            signal: timeoutSignal,
-            headers: { accept: 'application/json' },
-          });
-          if (res.ok) {
+          let isAlive = false;
+          try {
+            const res = await fetch(service.url, {
+              signal: timeoutSignal,
+              headers: { accept: 'application/json' },
+            });
+            if (res.ok) {
+              isAlive = true;
+            }
+          } catch {
+            // If standard fetch failed due to CORS policy (e.g. Origin server lacking CORS headers),
+            // fallback to mode: 'no-cors' ping. If the server is up and responding, it returns an opaque response.
+            try {
+              const resNoCors = await fetch(service.url, {
+                mode: 'no-cors',
+                signal: timeoutSignal,
+              });
+              if (resNoCors.type === 'opaque' || resNoCors.ok) {
+                isAlive = true;
+              }
+            } catch {
+              // Server is still booting / connection refused
+            }
+          }
+
+          if (isAlive) {
             const latency = Math.round(performance.now() - start);
             if (isMountedRef.current) {
               setStatuses((prev) => ({

@@ -331,10 +331,37 @@ input[type='number'] { width: 100%; }
 .field-label { font-size: 0.75rem; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 4px; }
 .uniform-input { height: 32px; padding: 4px 8px; font-size: 0.82rem; }
 .speed-toggle-group { display: flex; gap: 4px; width: 100%; }
-.speed-btn { flex: 1; height: 28px; padding: 0 4px; font-size: 0.78rem; display: flex; align-items: center; justify-content: center; }
-.speed-btn:hover:not(:disabled) { background: var(--surface-alt); border-color: var(--ink-2); color: var(--ink); }
-.speed-btn.active { background: var(--ink); border-color: var(--ink); color: #ffffff !important; font-weight: 600; }
-.speed-btn.active:hover:not(:disabled) { background: var(--ink-2) !important; border-color: var(--ink-2) !important; color: #ffffff !important; }
+.speed-btn {
+  flex: 1;
+  height: 28px;
+  padding: 0 4px;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink) !important;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: all 120ms ease;
+}
+.speed-btn:hover:not(:disabled) {
+  background: var(--surface-alt) !important;
+  border-color: var(--ink-2) !important;
+  color: var(--ink) !important;
+}
+.speed-btn.active {
+  background: var(--ink) !important;
+  border-color: var(--ink) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+}
+.speed-btn.active:hover:not(:disabled),
+.speed-btn.active:focus,
+.speed-btn.active:focus-visible {
+  background: var(--ink-2) !important;
+  border-color: var(--ink-2) !important;
+  color: #ffffff !important;
+}
 .sidebar-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .btn-full { width: 100%; justify-content: center; height: 34px; font-size: 0.85rem; }
 .button-sub-row { display: flex; gap: 6px; }

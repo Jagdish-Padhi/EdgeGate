@@ -135,6 +135,8 @@ export function App() {
   async function handleExecuteReset() {
     if (resetting) return;
     setResetting(true);
+    // Halt active simulation and clear client telemetry immediately on reset initiation
+    setLastResetAt(Date.now());
     try {
       if (view === 'settings') {
         // Trigger settings reset to factory defaults
@@ -144,13 +146,11 @@ export function App() {
         setTheoryResetKey(Date.now());
         await postQuietly(`${COORDINATOR_URL}/admin/reset`);
         await Promise.all(EDGES.map((edge) => postQuietly(`${edge.url}/_edge/reset`)));
-        setLastResetAt(Date.now());
         await refreshEdges();
       } else {
         // Console view: reset gateway coordinator and all regional edge nodes
         await postQuietly(`${COORDINATOR_URL}/admin/reset`);
         await Promise.all(EDGES.map((edge) => postQuietly(`${edge.url}/_edge/reset`)));
-        setLastResetAt(Date.now());
         await refreshEdges();
       }
     } finally {

@@ -1,3 +1,4 @@
+import cors from 'cors';
 import express from 'express';
 
 const ORDERS = [
@@ -13,6 +14,7 @@ export function createOriginApp({
 } = {}) {
   const app = express();
   app.disable('x-powered-by');
+  app.use(cors());
   app.use(express.json());
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
