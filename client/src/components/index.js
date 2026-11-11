@@ -2,6 +2,7 @@
 export { InfoTip } from './common/InfoTip.jsx';
 export { StatusDot } from './common/StatusDot.jsx';
 export { ErrorBoundary } from './common/ErrorBoundary.jsx';
+export { WarmupModal } from './common/WarmupModal.jsx';
 
 // Gateway Console Components
 export { EdgeCard } from './lab/EdgeCard.jsx';

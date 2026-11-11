@@ -10,6 +10,7 @@ import {
   TheoryGuide,
   SettingsPanel,
   ErrorBoundary,
+  WarmupModal,
 } from './components/index.js';
 import { usePolling } from './hooks/usePolling.js';
 import {
@@ -70,9 +71,23 @@ export function App() {
 
   const [resetting, setResetting] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showWarmupModal, setShowWarmupModal] = useState(() => {
+    try {
+      return sessionStorage.getItem('edgegate_warmup_dismissed') !== 'true';
+    } catch {
+      return true;
+    }
+  });
   const [lastResetAt, setLastResetAt] = useState(Date.now());
   const [settingsResetKey, setSettingsResetKey] = useState(0);
   const [theoryResetKey, setTheoryResetKey] = useState(0);
+
+  const handleWarmupComplete = () => {
+    try {
+      sessionStorage.setItem('edgegate_warmup_dismissed', 'true');
+    } catch {}
+    setShowWarmupModal(false);
+  };
 
   useEffect(() => {
     const onHashChange = () => {
@@ -184,6 +199,11 @@ export function App() {
         onConfirm={handleExecuteReset}
         resetting={resetting}
         view={view}
+      />
+
+      <WarmupModal
+        isOpen={showWarmupModal}
+        onComplete={handleWarmupComplete}
       />
     </div>
   );
