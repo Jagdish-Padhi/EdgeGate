@@ -13,8 +13,10 @@ const round = (value) => Number(value.toFixed(1));
 
 function Budget({ usage }) {
   const reserved = usage.leases.reduce((sum, lease) => sum + lease.size, 0);
+  const totalAllocated = usage.used + reserved;
+  const barMax = Math.max(usage.limit, totalAllocated);
+  const percent = (value) => `${Math.max(0, Math.min(100, (value / barMax) * 100))}%`;
   const unassigned = Math.max(0, usage.limit - usage.used - reserved);
-  const percent = (value) => `${Math.min(100, (value / usage.limit) * 100)}%`;
   const { caller, rule } = describeKey(usage.key);
 
   return (
@@ -63,19 +65,17 @@ export function GlobalUsage({ keys, coordinatorUrl, lastEvent }) {
     }
   }, POLL_INTERVAL_MS);
 
-  // Trigger immediate refresh whenever a request is completed
-  const refreshTimerRef = useRef(null);
+  // Trigger immediate and follow-up refresh whenever a request is completed
   useEffect(() => {
     if (lastEvent) {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       refreshUsage();
-      refreshTimerRef.current = setTimeout(() => {
-        refreshUsage();
-      }, 150);
+      const t1 = setTimeout(refreshUsage, 250);
+      const t2 = setTimeout(refreshUsage, 750);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
     }
-    return () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-    };
   }, [lastEvent, refreshUsage]);
 
   const online = result?.online ?? false;

@@ -29,6 +29,7 @@ export function loadConfig(env = process.env) {
       port: int(env, 'EDGE_PORT', 4201),
       peers: int(env, 'EDGE_PEERS', 3),
       syncIntervalMs: int(env, 'EDGE_SYNC_INTERVAL_MS', 1000),
+      syncTimeoutMs: int(env, 'EDGE_SYNC_TIMEOUT_MS', 5000),
       syncLatencyMs: int(env, 'EDGE_SYNC_LATENCY_MS', 0),
       syncJitterMs: int(env, 'EDGE_SYNC_JITTER_MS', 0),
       syncLossRate: number(env, 'EDGE_SYNC_LOSS_RATE', 0),

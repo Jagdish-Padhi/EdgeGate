@@ -34,7 +34,7 @@ export function createEdgeNode({ config, log, clock = systemClock, transport, fa
     nodeId: config.id,
     epoch: newEpoch(clock),
     enforcer,
-    transport: transport ?? new HttpTransport({ baseUrl: config.coordinatorUrl }),
+    transport: transport ?? new HttpTransport({ baseUrl: config.coordinatorUrl, timeoutMs: config.syncTimeoutMs ?? 5000 }),
     faults: nodeFaults,
     clock,
     intervalMs: config.syncIntervalMs,

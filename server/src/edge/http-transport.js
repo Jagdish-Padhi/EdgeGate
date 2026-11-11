@@ -7,7 +7,7 @@ export class RejectedBatchError extends Error {
 }
 
 export class HttpTransport {
-  constructor({ baseUrl, timeoutMs = 1000 }) {
+  constructor({ baseUrl, timeoutMs = 5000 }) {
     this.baseUrl = baseUrl;
     this.timeoutMs = timeoutMs;
   }
