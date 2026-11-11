@@ -27,20 +27,17 @@ the local edge-worker adapter used for this project.
 
 ## Architecture
 
-```text
-Clients
-   |
-   v
-Regional edge nodes  ---- admitted requests ---->  Origin API
-   |
-   | batched usage reports and quota leases
-   v
-Coordinator  ------------------------------->  MongoDB
-```
+![EdgeGate data and control plane architecture](docs/architecture-data-control-plane.png)
 
-The request path is local once an edge holds a lease. The coordinator is used
-for synchronization, global usage accounting, lease allocation, and rule
-distribution rather than for every request.
+The browser sends each request to one of the regional edge nodes. The selected
+edge resolves the rule, checks its local lease and token bucket, and proxies
+allowed requests to the Origin API. The edge returns rate-limit headers for
+allowed responses or `429` with `Retry-After` when admission is denied.
+
+Edges periodically send admitted and denied counts to the Coordinator in
+idempotent batches. The Coordinator updates global usage in MongoDB, allocates
+leases, and returns rules and lease grants. MongoDB is accessed only by the
+Coordinator; edge state remains in process memory.
 
 Read the complete design, data flow, failure handling, and guarantees in
 [docs/architecture.md](docs/architecture.md).
@@ -74,7 +71,7 @@ npm run dev
 Copy the server environment template:
 
 ```bash
-copy .env.example .env
+copy server\.env.example .env
 ```
 
 Set the Atlas connection string in `.env`:
@@ -106,6 +103,82 @@ The supervisor restarts a child process after a crash.
 The dashboard Settings panel can change the restart delay live; the default is
 1500 ms. The local supervisor exposes this control on port `4300`.
 
+## Deploy the backend to Render
+
+The production backend is deployed as **five separate Render Web Services**:
+one Origin API, one Coordinator, and three regional Edges. Do not deploy
+`npm run dev` or `bin/dev.js` on Render; that supervisor is for local
+development and starts all five processes inside one machine.
+
+For each service, use the repository root as the Render repository, set
+**Root Directory** to `server`, use Node 20 or newer, and set:
+
+```text
+Build Command: npm install
+```
+
+Set `PORT=10000` and use the following start commands and service-specific
+variables. Render provides the public HTTPS URL after each service is created.
+
+### Origin service
+
+```text
+Start Command: npm run start:origin
+```
+
+```env
+PORT=10000
+ORIGIN_PORT=10000
+DEMO_LOGIN_EMAIL=demo@edgegate.dev
+DEMO_LOGIN_PASSWORD=<strong-password>
+```
+
+### Coordinator service
+
+```text
+Start Command: npm run start:coordinator
+```
+
+```env
+PORT=10000
+COORDINATOR_PORT=10000
+MONGO_URI=<MongoDB-Atlas-connection-string>
+MONGO_DB=edgegate
+LOG_LEVEL=info
+```
+
+### Regional Edge services
+
+Create three services with `Start Command` set to:
+
+```text
+npm run start:edge
+```
+
+Use the same variables for all three services, changing only `EDGE_ID`:
+
+```env
+PORT=10000
+EDGE_PORT=10000
+EDGE_ID=edge-mumbai
+EDGE_PEERS=3
+COORDINATOR_URL=https://<coordinator-service>.onrender.com
+ORIGIN_URL=https://<origin-service>.onrender.com
+EDGE_FAIL_MODE=bounded
+EDGE_SYNC_INTERVAL_MS=1000
+EDGE_SYNC_LATENCY_MS=0
+EDGE_SYNC_JITTER_MS=0
+EDGE_SYNC_LOSS_RATE=0
+```
+
+Set `EDGE_ID` to `edge-frankfurt` and `edge-virginia` in the other two
+services. The Coordinator and Origin URLs must be the actual Render URLs, not
+localhost URLs. The built-in CORS middleware allows the Vercel browser client
+to call the Coordinator and Edges directly over HTTPS.
+
+MongoDB Atlas must allow connections from Render, and `MONGO_URI` should be
+stored as a Render secret rather than committed to the repository.
+
 ## Run the dashboard
 
 In a second terminal:
@@ -126,7 +199,7 @@ The landing page explains the product. Select **Open live console** to:
 
 ## Environment configuration
 
-The server template is [.env.example](.env.example). Important values:
+The server template is [server/.env.example](server/.env.example). Important values:
 
 | Variable | Default | Description |
 |---|---:|---|
@@ -160,7 +233,7 @@ EDGE_SYNC_LOSS_RATE=0.02
 ## Frontend deployment configuration
 
 The frontend template is [client/.env.example](client/.env.example).
-For a Vercel deployment, configure:
+For a Vercel deployment, configure the Coordinator and all three Edge URLs:
 
 ```env
 VITE_COORDINATOR_URL=https://your-coordinator.onrender.com
@@ -170,8 +243,10 @@ VITE_EDGE_VIRGINIA_URL=https://your-edge-virginia.onrender.com
 ```
 
 The frontend sends browser traffic directly to the configured edge services.
-Configure CORS and HTTPS at the deployed services before presenting the live
-version.
+`VITE_DEV_CONTROL_URL` is only for the local development supervisor and should
+normally remain unset in production. Vite embeds `VITE_*` values at build time,
+so redeploy Vercel after changing them. Do not put MongoDB credentials or other
+backend secrets in the Vercel environment.
 
 ## Example request
 
