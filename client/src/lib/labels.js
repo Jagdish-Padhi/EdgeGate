@@ -1,5 +1,5 @@
 const RULE_NAMES = { 'public-api': 'Public API', 'auth-login': 'Login' };
-const MODE_LABELS = { leased: 'Coordinated', idle: 'Idle', local: 'On its own', open: 'Allowing all', closed: 'Blocking all' };
+const MODE_LABELS = { leased: 'Coordinated', idle: 'Idle', local: 'Local fallback', open: 'Allow all', closed: 'Block all' };
 
 export const modeLabel = (mode) => MODE_LABELS[mode] ?? mode;
 export const ruleName = (ruleId) => RULE_NAMES[ruleId] ?? ruleId;

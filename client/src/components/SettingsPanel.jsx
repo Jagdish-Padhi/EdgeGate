@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getJson, putJson } from '../api/http.js';
 import { DEV_CONTROL_URL } from '../config.js';
 import { Check, Layers, Sliders, X } from 'lucide-react';
+import { InfoTip } from './InfoTip.jsx';
 
 const networkDefaults = {
   latencyMs: 0,
@@ -11,20 +12,21 @@ const networkDefaults = {
   restartDelayMs: 1500,
 };
 
+const LIMIT_TIP = 'The most requests a caller can make in one window.';
+const BURST_TIP = 'The most requests a caller can send back to back. It cannot exceed the limit.';
+const WINDOW_TIP = 'The length of the counting period, in seconds.';
+
 export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
   const [activeTab, setActiveTab] = useState('rules'); // 'rules' | 'network'
 
-  // Network Faults State
   const [netValues, setNetValues] = useState(networkDefaults);
   const [netSaveStatus, setNetSaveStatus] = useState('');
   const initializedNet = useRef(false);
 
-  // Rules / Tiers State
   const [rules, setRules] = useState(null);
   const [ruleSaveStatus, setRuleSaveStatus] = useState('');
   const [loadingRules, setLoadingRules] = useState(false);
 
-  // Editable Tier limits
   const [freeLimit, setFreeLimit] = useState(20);
   const [freeBurst, setFreeBurst] = useState(10);
   const [freeWindow, setFreeWindow] = useState(60);
@@ -39,7 +41,6 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
   const [loginLimit, setLoginLimit] = useState(5);
   const [loginBurst, setLoginBurst] = useState(5);
 
-  // 1. Load initial network state
   useEffect(() => {
     if (initializedNet.current) return;
     const state = edges.find((edge) => edge.state)?.state;
@@ -58,7 +59,6 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
     }
   }, [edges]);
 
-  // 2. Load rules from coordinator
   useEffect(() => {
     async function loadRules() {
       setLoadingRules(true);
@@ -90,7 +90,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
           setLoginBurst(authRule.tiers.default.burst);
         }
       } catch (err) {
-        setRuleSaveStatus('Failed to load rules from coordinator.');
+        setRuleSaveStatus('Could not load rules from the coordinator.');
       } finally {
         setLoadingRules(false);
       }
@@ -98,25 +98,23 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
     loadRules();
   }, [coordinatorUrl]);
 
-  // Save network conditions
   async function applyNetwork() {
-    setNetSaveStatus('Saving network settings...');
+    setNetSaveStatus('Saving');
     try {
       await Promise.allSettled([
         ...edges.map((edge) => putJson(`${edge.url}/_edge/faults`, netValues)),
         putJson(`${DEV_CONTROL_URL}/settings`, { restartDelayMs: netValues.restartDelayMs }),
       ]);
-      setNetSaveStatus('Network settings applied to all edges.');
+      setNetSaveStatus('Saved. Applied to all nodes.');
       setTimeout(() => setNetSaveStatus(''), 3000);
     } catch {
-      setNetSaveStatus('Error applying network settings.');
+      setNetSaveStatus('Could not save network settings.');
     }
   }
 
-  // Save all tier limits
   async function applyRules() {
     if (!rules) return;
-    setRuleSaveStatus('Applying rate limit updates...');
+    setRuleSaveStatus('Saving');
     const next = structuredClone(rules);
 
     const pubRule = next.rules.find((r) => r.id === 'public-api');
@@ -146,7 +144,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
     try {
       const saved = await putJson(`${coordinatorUrl}/admin/rules`, next);
       setRules(saved);
-      setRuleSaveStatus(`Applied version ${saved.version}! Propagates to all edges in seconds.`);
+      setRuleSaveStatus(`Saved as version ${saved.version}. Nodes pick it up on their next sync.`);
       setTimeout(() => setRuleSaveStatus(''), 4000);
     } catch (err) {
       setRuleSaveStatus(err.message);
@@ -154,11 +152,11 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
   }
 
   return (
-    <aside className="settings panel" aria-label="System Settings">
+    <aside className="settings panel" aria-label="Settings">
       <div className="panel-head">
         <div>
-          <h2>System Configuration & Rate Limits</h2>
-          <p className="muted">Configure tier quotas and network simulation</p>
+          <h2>Settings</h2>
+          <p className="muted">Rate limits for each plan and simulated network conditions</p>
         </div>
         <button type="button" className="close-button icon-button" onClick={onClose} aria-label="Close settings">
           <X size={15} aria-hidden="true" />
@@ -172,29 +170,29 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
           className={`settings-tab-btn ${activeTab === 'rules' ? 'active' : ''}`}
           onClick={() => setActiveTab('rules')}
         >
-          <Layers size={14} /> Rate Limit Tiers (Quotas & Burst)
+          <Layers size={14} aria-hidden="true" /> Rate limits
         </button>
         <button
           type="button"
           className={`settings-tab-btn ${activeTab === 'network' ? 'active' : ''}`}
           onClick={() => setActiveTab('network')}
         >
-          <Sliders size={14} /> Network Conditions & Sync
+          <Sliders size={14} aria-hidden="true" /> Network
         </button>
       </div>
 
       {activeTab === 'rules' ? (
         <div className="settings-section">
-          {loadingRules && <p className="muted">Loading current tier definitions...</p>}
+          {loadingRules && <p className="muted">Loading rules</p>}
 
           <div className="tier-group">
             <div className="tier-title">
-              <strong>Free Plan (/api/orders)</strong>
-              <small>Client key-free-acme</small>
+              <strong>Free plan</strong>
+              <small>/api/orders, per API key</small>
             </div>
             <div className="tier-inputs">
               <label>
-                Limit (req)
+                <span className="field-label">Limit<InfoTip label="About limit">{LIMIT_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -204,7 +202,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
                 />
               </label>
               <label>
-                Burst Cap
+                <span className="field-label">Burst<InfoTip label="About burst">{BURST_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -214,7 +212,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
                 />
               </label>
               <label>
-                Window (sec)
+                <span className="field-label">Window (s)<InfoTip label="About window" align="end">{WINDOW_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="5"
@@ -228,12 +226,12 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
 
           <div className="tier-group">
             <div className="tier-title">
-              <strong>Pro Plan (/api/orders)</strong>
-              <small>Client key-pro-globex</small>
+              <strong>Pro plan</strong>
+              <small>/api/orders, per API key</small>
             </div>
             <div className="tier-inputs">
               <label>
-                Limit (req)
+                <span className="field-label">Limit<InfoTip label="About limit">{LIMIT_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -243,7 +241,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
                 />
               </label>
               <label>
-                Burst Cap
+                <span className="field-label">Burst<InfoTip label="About burst">{BURST_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -253,7 +251,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
                 />
               </label>
               <label>
-                Window (sec)
+                <span className="field-label">Window (s)<InfoTip label="About window" align="end">{WINDOW_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="5"
@@ -267,12 +265,12 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
 
           <div className="tier-group">
             <div className="tier-title">
-              <strong>Anonymous / Default API (/api/weather)</strong>
-              <small>Per-IP scope</small>
+              <strong>No API key</strong>
+              <small>/api/weather, per IP address</small>
             </div>
             <div className="tier-inputs">
               <label>
-                Limit (req)
+                <span className="field-label">Limit<InfoTip label="About limit">{LIMIT_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -282,7 +280,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
                 />
               </label>
               <label>
-                Burst Cap
+                <span className="field-label">Burst<InfoTip label="About burst">{BURST_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -296,12 +294,12 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
 
           <div className="tier-group">
             <div className="tier-title">
-              <strong>Login Security (/auth/login)</strong>
-              <small>Brute-force protection per IP</small>
+              <strong>Login</strong>
+              <small>/auth/login, per IP address</small>
             </div>
             <div className="tier-inputs">
               <label>
-                Limit (attempts)
+                <span className="field-label">Limit<InfoTip label="About limit">{LIMIT_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -311,7 +309,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
                 />
               </label>
               <label>
-                Burst Cap
+                <span className="field-label">Burst<InfoTip label="About burst">{BURST_TIP}</InfoTip></span>
                 <input
                   type="number"
                   min="1"
@@ -325,7 +323,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
 
           <div className="settings-actions">
             <button type="button" className="primary" onClick={applyRules} disabled={!rules}>
-              <Check size={14} /> Apply Rate Limit Changes
+              <Check size={14} aria-hidden="true" /> Save rate limits
             </button>
             {ruleSaveStatus && <span className="save-status-msg">{ruleSaveStatus}</span>}
           </div>
@@ -334,7 +332,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
         <div className="settings-section">
           <div className="settings-form">
             <label>
-              Base latency (ms)
+              <span className="field-label">Sync delay (ms)<InfoTip label="About sync delay">Time added to every sync between a node and the coordinator.</InfoTip></span>
               <input
                 type="number"
                 min="0"
@@ -344,7 +342,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
               />
             </label>
             <label>
-              Jitter (± ms)
+              <span className="field-label">Delay variation (ms)<InfoTip label="About delay variation">Random change added to the sync delay, up or down by this amount.</InfoTip></span>
               <input
                 type="number"
                 min="0"
@@ -354,18 +352,18 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
               />
             </label>
             <label>
-              Lost replies (%)
+              <span className="field-label">Dropped replies (%)<InfoTip label="About dropped replies">Share of coordinator replies that never reach the node. The node sends the update again.</InfoTip></span>
               <input
                 type="number"
                 min="0"
                 max="100"
                 step="1"
-                value={netValues.lostResponseRate * 100}
+                value={Math.round(netValues.lostResponseRate * 100)}
                 onChange={(e) => setNetValues((v) => ({ ...v, lostResponseRate: Number(e.target.value) / 100 }))}
               />
             </label>
             <label>
-              Sync interval (ms)
+              <span className="field-label">Sync interval (ms)<InfoTip label="About sync interval">How often each node reports usage and receives a new lease. Shorter means faster rebalancing and more coordinator load.</InfoTip></span>
               <input
                 type="number"
                 min="100"
@@ -376,7 +374,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
               />
             </label>
             <label>
-              Node restart delay (ms)
+              <span className="field-label">Restart delay (ms)<InfoTip label="About restart delay" align="end">How long to wait before a crashed node is started again.</InfoTip></span>
               <input
                 type="number"
                 min="0"
@@ -390,7 +388,7 @@ export function SettingsPanel({ edges, coordinatorUrl, onClose }) {
 
           <div className="settings-actions">
             <button type="button" className="primary" onClick={applyNetwork}>
-              <Check size={14} /> Apply Network Conditions
+              <Check size={14} aria-hidden="true" /> Save network settings
             </button>
             {netSaveStatus && <span className="save-status-msg">{netSaveStatus}</span>}
           </div>

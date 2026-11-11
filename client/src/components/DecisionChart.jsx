@@ -97,12 +97,12 @@ export function DecisionChart({ edges }) {
         <div>
           <h2 id="decision-chart-title">
             <Activity size={16} strokeWidth={1.8} aria-hidden="true" />
-            Regional decisions
+            Decisions per second
             <InfoTip label="About this chart">
-              Each point is calculated from the edge counters between console polls. It shows decisions per second made locally by each region, not requests sent to a central limiter.
+              Each point is the change in a node&apos;s allowed or blocked count since the last refresh, divided by the time elapsed. Every region decides on its own.
             </InfoTip>
           </h2>
-          <p className="muted">Live request decisions by edge region</p>
+          <p className="muted">By region, updated live</p>
         </div>
         <div className="chart-switcher" role="group" aria-label="Decision type">
           <button type="button" className={metric === 'allowed' ? 'active' : ''} onClick={() => setMetric('allowed')}>
@@ -125,7 +125,7 @@ export function DecisionChart({ edges }) {
           <line className="chart-axis" x1={PADDING.left} x2={PADDING.left} y1={PADDING.top} y2={HEIGHT - PADDING.bottom} />
           <line className="chart-axis" x1={PADDING.left} x2={WIDTH - PADDING.right} y1={HEIGHT - PADDING.bottom} y2={HEIGHT - PADDING.bottom} />
           <text className="chart-axis-title" x={12} y={PADDING.top - 3}>req/s</text>
-          {!hasData && <text className="chart-empty" x={WIDTH / 2} y={HEIGHT / 2}>Send traffic to populate the graph</text>}
+          {!hasData && <text className="chart-empty" x={WIDTH / 2} y={HEIGHT / 2}>Send requests to see data</text>}
           {chart.series.map((series) => (
             <g key={series.id}>
               {lineSegments(series.points).map((segment, index) => (
@@ -148,7 +148,7 @@ export function DecisionChart({ edges }) {
             return <span key={series.id} className={online ? '' : 'offline'}><i style={{ background: series.color }} />{series.region}{online ? '' : ' (offline)'}</span>;
           })}
         </div>
-        <span className="muted">{hasData ? `Last ${samples.length} samples · ${metric} decisions/sec` : 'Waiting for edge counters'}</span>
+        <span className="muted">{hasData ? `Last ${samples.length} samples` : 'Waiting for data'}</span>
       </div>
     </section>
   );

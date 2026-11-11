@@ -1,112 +1,96 @@
 import { useState } from 'react';
-import { BookOpen, CheckCircle, Database, Flame, HelpCircle, Layers, Network, ShieldAlert, Sliders, Zap } from 'lucide-react';
+import { BookOpen, CheckCircle2, Database, Flame, Layers, Network, ShieldAlert, Sliders, ListChecks } from 'lucide-react';
+
+const TABS = [
+  { id: 'overview', label: 'Overview', icon: BookOpen },
+  { id: 'flow', label: 'Request flow', icon: Layers },
+  { id: 'terms', label: 'Terms', icon: ListChecks },
+  { id: 'settings', label: 'Settings', icon: Sliders },
+  { id: 'failures', label: 'Failures', icon: ShieldAlert },
+];
 
 export function TheoryGuide() {
-  const [activeTab, setActiveTab] = useState('analogy');
+  const [activeTab, setActiveTab] = useState('overview');
 
   return (
     <div className="theory-container" id="theory">
       <div className="theory-header">
-        <p className="eyebrow">Interactive Learning Guide</p>
-        <h1>How EdgeGate Works Under the Hood</h1>
+        <h1>How EdgeGate works</h1>
         <p className="theory-lead">
-          Understand distributed rate limiting through clear analogies, visual flows, and parameter explanations.
+          A short guide to the ideas behind the console: what each part does and what to try.
         </p>
 
-        <div className="theory-nav">
-          <button
-            type="button"
-            className={`theory-nav-btn ${activeTab === 'analogy' ? 'active' : ''}`}
-            onClick={() => setActiveTab('analogy')}
-          >
-            <BookOpen size={16} /> 1. Real-World Analogy
-          </button>
-          <button
-            type="button"
-            className={`theory-nav-btn ${activeTab === 'lifecycle' ? 'active' : ''}`}
-            onClick={() => setActiveTab('lifecycle')}
-          >
-            <Layers size={16} /> 2. Request Lifecycle
-          </button>
-          <button
-            type="button"
-            className={`theory-nav-btn ${activeTab === 'glossary' ? 'active' : ''}`}
-            onClick={() => setActiveTab('glossary')}
-          >
-            <HelpCircle size={16} /> 3. Jargon Buster
-          </button>
-          <button
-            type="button"
-            className={`theory-nav-btn ${activeTab === 'parameters' ? 'active' : ''}`}
-            onClick={() => setActiveTab('parameters')}
-          >
-            <Sliders size={16} /> 4. Parameter Impacts
-          </button>
-          <button
-            type="button"
-            className={`theory-nav-btn ${activeTab === 'chaos' ? 'active' : ''}`}
-            onClick={() => setActiveTab('chaos')}
-          >
-            <ShieldAlert size={16} /> 5. Failure & Chaos Simulation
-          </button>
+        <div className="theory-nav" role="tablist" aria-label="Guide sections">
+          {TABS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === id}
+              className={`theory-nav-btn ${activeTab === id ? 'active' : ''}`}
+              onClick={() => setActiveTab(id)}
+            >
+              <Icon size={15} aria-hidden="true" /> {label}
+            </button>
+          ))}
         </div>
       </div>
 
       <div className="theory-content">
-        {/* TAB 1: REAL WORLD ANALOGY */}
-        {activeTab === 'analogy' && (
+        {activeTab === 'overview' && (
           <section className="theory-card">
-            <h2>The Bank Vault & Regional Cashiers Analogy</h2>
+            <h2>Why limit requests at the edge</h2>
             <p className="lead-text">
-              Imagine a global company with an origin API server that can only handle <strong>100 requests per minute</strong>.
-              If every request from Mumbai, Frankfurt, and Virginia called the central server to ask <em>"Can I enter?"</em>,
-              two disasters happen:
+              An API has one global limit, for example 100 requests per minute. Users reach it through
+              several regions. The question is where the counting happens.
             </p>
 
             <div className="analogy-grid">
               <div className="analogy-box bad">
-                <ShieldAlert size={24} className="icon-bad" />
-                <h3>Without EdgeGate (Naive Central Check)</h3>
+                <ShieldAlert size={22} className="icon-bad" aria-hidden="true" />
+                <h3>One central check per request</h3>
                 <ul>
-                  <li><strong>Slow:</strong> Every request suffers 150ms+ cross-continental ping times just to check a counter.</li>
-                  <li><strong>Central Bottleneck:</strong> The central rate-limiter crashes under the check traffic.</li>
-                  <li><strong>Unfair Starvation:</strong> A bot script in one city can consume all 100 requests before other users wake up.</li>
+                  <li><strong>Slower:</strong> every request waits for a round trip to the central limiter.</li>
+                  <li><strong>Bottleneck:</strong> the central service handles every check, so it carries all the load.</li>
+                  <li><strong>Single point of failure:</strong> if the limiter is down, every region is affected.</li>
                 </ul>
               </div>
 
               <div className="analogy-box good">
-                <CheckCircle size={24} className="icon-good" />
-                <h3>With EdgeGate (Lease Delegation)</h3>
+                <CheckCircle2 size={22} className="icon-good" aria-hidden="true" />
+                <h3>Leases from a coordinator</h3>
                 <ul>
-                  <li><strong>Local Speed:</strong> The Central Coordinator gives each regional edge a <em>"petty cash drawer"</em> (e.g. 20 tokens).</li>
-                  <li><strong>Sub-Millisecond Decisions:</strong> When a user calls Mumbai, Mumbai checks its own local memory in &lt;1ms.</li>
-                  <li><strong>Dynamic Fair Sharing:</strong> If Frankfurt is quiet and Mumbai gets busy, the coordinator automatically moves unused tokens to Mumbai!</li>
+                  <li><strong>Local decisions:</strong> the coordinator lends each region a share of the limit. The region spends it from memory, with no network call.</li>
+                  <li><strong>One shared limit:</strong> shares are sized so that usage plus lent quota never goes above the limit.</li>
+                  <li><strong>Rebalancing:</strong> at each sync, shares move toward the regions that receive more traffic.</li>
                 </ul>
               </div>
             </div>
 
             <div className="analogy-banner">
-              <Zap size={20} className="accent-icon" />
+              <Database size={18} className="accent-icon" aria-hidden="true" />
               <div>
-                <strong>Key Takeaway:</strong> The coordinator hands out short-lived <em>leases</em> in the background. The client path never waits for the coordinator!
+                <strong>In short:</strong> the coordinator lends quota ahead of time, regions spend it locally and
+                report back in batches. A region with no lease for a caller asks the coordinator first, so the first
+                request from a new caller takes slightly longer.
               </div>
             </div>
           </section>
         )}
 
-        {/* TAB 2: REQUEST LIFECYCLE */}
-        {activeTab === 'lifecycle' && (
+        {activeTab === 'flow' && (
           <section className="theory-card">
-            <h2>What Happens When a Request Arrives?</h2>
-            <p className="lead-text">Here is the exact step-by-step path every single API request follows:</p>
+            <h2>What happens to a request</h2>
+            <p className="lead-text">The steps below are the same for every request.</p>
 
             <div className="lifecycle-timeline">
               <div className="timeline-step">
                 <div className="step-number">1</div>
                 <div className="step-content">
-                  <h3>Client calls regional edge</h3>
+                  <h3>The request reaches an edge node</h3>
                   <p>
-                    A user in Europe calls <code>GET /api/orders</code>. DNS routes them to the closest EdgeGate node (<strong>Frankfurt</strong>).
+                    A client calls an endpoint such as <code>GET /api/orders</code> on the nearest node. The node
+                    identifies the caller from the API key or IP address and finds the matching rule.
                   </p>
                 </div>
               </div>
@@ -114,28 +98,29 @@ export function TheoryGuide() {
               <div className="timeline-step">
                 <div className="step-number">2</div>
                 <div className="step-content">
-                  <h3>Local Memory Inspection (&lt;1ms)</h3>
-                  <p>Frankfurt evaluates two things in local RAM without making any network call:</p>
+                  <h3>The node checks two things in memory</h3>
                   <div className="step-subgrid">
                     <div className="sub-check">
-                      <strong>A. Do I have a live Lease?</strong>
-                      <span>Has the central coordinator granted Frankfurt remaining quota for this caller?</span>
+                      <strong>Lease</strong>
+                      <span>Does this node still hold quota from the coordinator for this caller?</span>
                     </div>
                     <div className="sub-check">
-                      <strong>B. Do I have Burst Tokens?</strong>
-                      <span>Has the caller sent 10 requests in 5 milliseconds? (Token bucket prevents instant spikes).</span>
+                      <strong>Burst tokens</strong>
+                      <span>Has this caller sent too many requests in a very short time?</span>
                     </div>
                   </div>
+                  <p className="step-note">If the node has no valid lease, it asks the coordinator for one first.</p>
                 </div>
               </div>
 
               <div className="timeline-step">
                 <div className="step-number">3</div>
                 <div className="step-content">
-                  <h3>Immediate Admission or Perimeter Block</h3>
+                  <h3>Allow or block</h3>
                   <p>
-                    If tokens are available, Frankfurt forwards the request directly to <strong>Your Origin API</strong> (<code>200 OK</code>).
-                    If tokens are exhausted, Frankfurt immediately returns <code>429 Too Many Requests</code> with a <code>Retry-After</code> header, protecting your origin backend completely.
+                    If both checks pass, the node forwards the request to the origin (<code>200</code>). Otherwise it
+                    replies <code>429 Too Many Requests</code> with a <code>Retry-After</code> header, and the origin
+                    never sees the request.
                   </p>
                 </div>
               </div>
@@ -143,10 +128,10 @@ export function TheoryGuide() {
               <div className="timeline-step">
                 <div className="step-number">4</div>
                 <div className="step-content">
-                  <h3>Background Reconciliation (Every ~1 second)</h3>
+                  <h3>The node reports usage</h3>
                   <p>
-                    In the background, Frankfurt batches its admissions (e.g. <em>"I admitted 14 requests"</em>) and sends them to the Central Coordinator.
-                    The Coordinator logs the global total in MongoDB and gives Frankfurt a refreshed quota lease for the next interval.
+                    About once per sync interval (1 second by default), each node sends the number of requests it
+                    allowed and blocked. The coordinator stores the totals in MongoDB and replies with a new lease.
                   </p>
                 </div>
               </div>
@@ -154,188 +139,170 @@ export function TheoryGuide() {
           </section>
         )}
 
-        {/* TAB 3: JARGON BUSTER */}
-        {activeTab === 'glossary' && (
+        {activeTab === 'terms' && (
           <section className="theory-card">
-            <h2>Demystifying the Terminology</h2>
-            <p className="lead-text">Clear definitions for every term you see on the dashboard:</p>
+            <h2>Terms used in the console</h2>
+            <p className="lead-text">Short definitions for the labels you see on screen.</p>
 
             <div className="glossary-grid">
               <div className="glossary-item">
-                <span className="term-badge">Lease</span>
-                <h3>Quota Lease</h3>
+                <h3>Lease</h3>
                 <p>
-                  A temporary permission slip given by the coordinator to a regional edge (e.g., <em>"Mumbai may admit up to 25 requests over the next 2 seconds"</em>).
-                  Once expired or exhausted, the edge must sync to get more.
+                  A share of the global limit that the coordinator lends to one node for a short time. When it is
+                  used up or expires, the node syncs to get a new one.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Burst</span>
-                <h3>Token Bucket Burst</h3>
+                <h3>Burst (token bucket)</h3>
                 <p>
-                  Even if your limit is 60 requests/minute, you don't want a client firing 60 requests in the first 100 milliseconds.
-                  The burst cap acts like a buffer that refills steadily, smoothing out spiky traffic.
+                  A small bucket of tokens that refills steadily. Each request takes one token. It stops a caller
+                  from using the whole limit in the first fraction of a second.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Sliding Window</span>
-                <h3>Two-Bucket Sliding Window</h3>
+                <h3>Sliding window</h3>
                 <p>
-                  Prevents the "boundary burst" exploit. If limits reset strictly at 12:00:00, an attacker could send 20 requests at 11:59:59 and another 20 at 12:00:01 (40 requests in 2 seconds!).
-                  Sliding window smoothly blends the previous and current windows.
+                  A way to count usage without a hard reset at the end of each window. The coordinator estimates
+                  usage from the current and previous window, weighted by how much of each still applies.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Fail Mode</span>
-                <h3>Fail-Open vs Fail-Closed</h3>
+                <h3>Fail mode</h3>
                 <p>
-                  What should an edge do if an undersea fiber cable breaks and it cannot reach the coordinator?
-                  <strong>Fail-Open:</strong> Keep allowing requests to avoid breaking the user app.
-                  <strong>Fail-Closed:</strong> Block requests to guarantee the backend origin never overloads.
+                  What a node does when it has no lease. <strong>Bounded</strong> (default) allows a fixed share of
+                  the limit. <strong>Open</strong> allows everything. <strong>Closed</strong> blocks everything.
+                  It is set with the <code>EDGE_FAIL_MODE</code> environment variable.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Partition</span>
-                <h3>Network Partition</h3>
+                <h3>Network partition</h3>
                 <p>
-                  A simulated network failure where an edge node is isolated from the central coordinator.
-                  EdgeGate falls back to local safety math so the edge doesn't crash or guess wildly.
+                  A node cannot reach the coordinator. In this console you can simulate it with Disconnect. The node
+                  switches to Local fallback until the connection returns.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Sync Interval</span>
-                <h3>Batch Sync Interval</h3>
+                <h3>Sync interval</h3>
                 <p>
-                  How often edges check in with the coordinator (default 1000ms).
-                  Shorter intervals mean faster quota rebalancing between regions, while longer intervals reduce database load.
+                  How often nodes check in with the coordinator. A shorter interval rebalances quota faster. A longer
+                  one means fewer requests to the coordinator and MongoDB.
                 </p>
               </div>
             </div>
           </section>
         )}
 
-        {/* TAB 4: PARAMETER IMPACTS */}
-        {activeTab === 'parameters' && (
+        {activeTab === 'settings' && (
           <section className="theory-card">
-            <h2>How Changing Parameters Impacts the System</h2>
-            <p className="lead-text">Use the Settings drawer to tweak these parameters and observe the effect:</p>
+            <h2>What each setting changes</h2>
+            <p className="lead-text">Open Settings in the top bar, change a value, and watch the console react.</p>
 
             <div className="param-cards">
               <div className="param-row">
                 <div className="param-header">
-                  <Sliders size={18} className="param-icon" />
+                  <Sliders size={18} className="param-icon" aria-hidden="true" />
                   <div>
-                    <strong>Rate Limit (e.g. Free Tier: 20 req / 60s)</strong>
-                    <small>Settings → Rate Limit Tiers</small>
+                    <strong>Limit</strong>
+                    <small>Settings, Rate limits</small>
                   </div>
                 </div>
                 <div className="param-body">
-                  <p><strong>What it controls:</strong> The absolute maximum requests a single customer or API key can make globally in that window.</p>
-                  <p><strong>What you will observe:</strong> If you reduce Free tier from 20 to 10, sending a 30-request batch will cause red <code>429 Blocked</code> responses to appear much earlier.</p>
+                  <p><strong>Controls:</strong> the most requests one caller can make in a window, across all regions.</p>
+                  <p><strong>Try:</strong> lower the Free plan limit from 20 to 10, then send 30 requests. Blocked requests start much earlier.</p>
                 </div>
               </div>
 
               <div className="param-row">
                 <div className="param-header">
-                  <Flame size={18} className="param-icon" />
+                  <Flame size={18} className="param-icon" aria-hidden="true" />
                   <div>
-                    <strong>Burst Capacity (e.g. 10 tokens)</strong>
-                    <small>Settings → Rate Limit Tiers</small>
+                    <strong>Burst</strong>
+                    <small>Settings, Rate limits</small>
                   </div>
                 </div>
                 <div className="param-body">
-                  <p><strong>What it controls:</strong> How many rapid back-to-back calls are tolerated before throttling kicks in, even if total quota is not yet exceeded.</p>
-                  <p><strong>What you will observe:</strong> If Burst is 5, firing 15 requests in "Fast" mode will immediately throttle the 6th request with <code>Retry-After: 1</code>.</p>
+                  <p><strong>Controls:</strong> how many requests can arrive back to back before the node starts blocking, even when the limit has not been reached.</p>
+                  <p><strong>Try:</strong> set Burst to 5 and send requests at Fast pace. Requests are blocked once the burst tokens run out faster than they refill.</p>
                 </div>
               </div>
 
               <div className="param-row">
                 <div className="param-header">
-                  <Network size={18} className="param-icon" />
+                  <Network size={18} className="param-icon" aria-hidden="true" />
                   <div>
-                    <strong>Sync Interval (e.g. 1000ms vs 3000ms)</strong>
-                    <small>Settings → Network Conditions</small>
+                    <strong>Sync interval</strong>
+                    <small>Settings, Network</small>
                   </div>
                 </div>
                 <div className="param-body">
-                  <p><strong>What it controls:</strong> How frequently edges report usage and re-negotiate leases.</p>
-                  <p><strong>What you will observe:</strong> If one region experiences a huge traffic surge while sync interval is long (3000ms), it might temporarily throttle requests until the next sync cycle reallocates unused capacity from other idle regions.</p>
+                  <p><strong>Controls:</strong> how often nodes report usage and receive new leases.</p>
+                  <p><strong>Try:</strong> set it to 3000 ms and send a spike to one region. That region may be blocked until the next sync moves unused quota from quieter regions.</p>
                 </div>
               </div>
 
               <div className="param-row">
                 <div className="param-header">
-                  <Database size={18} className="param-icon" />
+                  <Database size={18} className="param-icon" aria-hidden="true" />
                   <div>
-                    <strong>Simulated Chaos (Disconnect / Partition)</strong>
-                    <small>Edge Card → Simulate a problem</small>
+                    <strong>Disconnect</strong>
+                    <small>Region card, Simulate a failure</small>
                   </div>
                 </div>
                 <div className="param-body">
-                  <p><strong>What it controls:</strong> Simulates broken connectivity between an edge and the central coordinator.</p>
-                  <p><strong>What you will observe:</strong> The edge transitions from "Coordinated" to "On its own" mode, using a conservative local fraction (limit ÷ 3 peers) to prevent origin overflow while flying blind.</p>
+                  <p><strong>Controls:</strong> cuts the connection between one node and the coordinator.</p>
+                  <p><strong>Try:</strong> the node changes from Coordinated to Local fallback and allows only a fixed share of each limit (1/3 with three nodes) until you reconnect.</p>
                 </div>
               </div>
             </div>
           </section>
         )}
 
-        {/* TAB 5: CHAOS & FAULT SIMULATION */}
-        {activeTab === 'chaos' && (
+        {activeTab === 'failures' && (
           <section className="theory-card">
-            <h2>Chaos Engineering: How EdgeGate Survives Disasters</h2>
+            <h2>How the system handles failures</h2>
             <p className="lead-text">
-              Real cloud networks experience cut undersea cables, packet loss, and service crashes.
-              Here is how EdgeGate stays resilient under each condition you can simulate on screen:
+              Each failure below can be triggered from a region card or from Settings.
             </p>
 
             <div className="glossary-grid">
               <div className="glossary-item">
-                <span className="term-badge">Failure Mode 1</span>
-                <h3>Network Partition (Disconnect)</h3>
+                <h3>Disconnect</h3>
+                <p><strong>What happens:</strong> the node cannot reach the coordinator.</p>
                 <p>
-                  <strong>What happened:</strong> The edge node is completely cut off from the central Coordinator.
-                </p>
-                <p>
-                  <strong>How the Edge reacts:</strong> It enters <em>"On its own"</em> fallback mode. Rather than halting or letting users flood the origin, it enforces a static fraction of the total limit (<code>Global Limit ÷ 3 Peer Nodes</code>) based on local sliding-window memory.
+                  <strong>Response:</strong> once its lease expires, the node falls back to a fixed share of the
+                  limit (<code>limit / number of nodes</code>), counted with a local sliding window.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Failure Mode 2</span>
-                <h3>Lost Sync Replies (Packet Drop)</h3>
+                <h3>Dropped replies</h3>
+                <p><strong>What happens:</strong> the coordinator receives a usage report, but the reply is lost.</p>
                 <p>
-                  <strong>What happened:</strong> The edge sends a usage batch to the Coordinator, but the return confirmation is dropped on the wire.
-                </p>
-                <p>
-                  <strong>How the Edge reacts:</strong> EdgeGate uses <em>idempotent sequence numbers</em> (<code>epoch#seq</code>). The edge safely re-transmits the batch without double-counting usage or losing tokens.
+                  <strong>Response:</strong> each report carries an epoch and sequence number. The node resends the
+                  same report, and the coordinator ignores the duplicate, so nothing is counted twice or lost.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Failure Mode 3</span>
-                <h3>High Latency & Jitter (Slow Network)</h3>
+                <h3>Slow network</h3>
+                <p><strong>What happens:</strong> every sync takes longer, with some random variation.</p>
                 <p>
-                  <strong>What happened:</strong> Cross-region background pings spike with +120ms latency and 40ms variation.
-                </p>
-                <p>
-                  <strong>How the Edge reacts:</strong> <em>Zero impact on user API requests!</em> Because client calls check local RAM, client response times remain &lt;1ms. Only background lease renewal experiences slight delay.
+                  <strong>Response:</strong> requests covered by a lease are not affected. Only requests that need a
+                  new lease wait for the slower sync.
                 </p>
               </div>
 
               <div className="glossary-item">
-                <span className="term-badge">Failure Mode 4</span>
-                <h3>Node Crash & Restart</h3>
+                <h3>Node crash</h3>
+                <p><strong>What happens:</strong> an edge process stops.</p>
                 <p>
-                  <strong>What happened:</strong> A regional edge server process crashes or is killed by the operator.
-                </p>
-                <p>
-                  <strong>How the Edge reacts:</strong> The supervisor restarts the process in ~1.5s with a fresh epoch. Abandoned leases in MongoDB naturally expire via TTL indexes, ensuring zero permanent quota leaks.
+                  <strong>Response:</strong> the development supervisor restarts it after the restart delay (1.5
+                  seconds by default) with a new epoch. Leases it held expire on their own, so no quota is lost for good.
                 </p>
               </div>
             </div>
@@ -345,4 +312,3 @@ export function TheoryGuide() {
     </div>
   );
 }
-

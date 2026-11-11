@@ -9,14 +9,21 @@ function syncSummary(sync, faults) {
   if (sync.consecutiveFailures > 0) return { text: 'Cannot reach the coordinator', warn: true };
   if (sync.lastSuccessAt === null) return { text: 'Connecting to the coordinator', warn: false };
   const seconds = Math.max(0, Math.round((Date.now() - sync.lastSuccessAt) / 1000));
-  const latency = sync.lastLatencyMs === null ? '' : ` · ${sync.lastLatencyMs} ms`;
-  return { text: `Checked in ${seconds}s ago${latency}`, warn: false };
+  const latency = sync.lastLatencyMs === null ? '' : `, ${sync.lastLatencyMs} ms`;
+  return { text: `Last sync ${seconds}s ago${latency}`, warn: false };
 }
 
 /** A key with no quota while the coordinator is healthy is just idle, not degraded. */
 function displayMode(key, state) {
   const healthy = !state.faults.partitioned && state.sync.consecutiveFailures === 0;
   return key.mode === 'local' && healthy ? 'idle' : key.mode;
+}
+
+/** Describes what a node does while it has no lease, based on its fail mode. */
+function fallbackText(state) {
+  if (state.failMode === 'open') return 'Requests are allowed without a quota until it reconnects.';
+  if (state.failMode === 'closed') return 'Requests are blocked until it reconnects.';
+  return `This node allows at most 1/${state.peers} of each limit until it reconnects.`;
 }
 
 function Toggle({ label, active, onClick, icon: Icon, inactiveIcon: InactiveIcon }) {
@@ -43,7 +50,7 @@ export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
         <StatusDot ok={edge.online}>{edge.online ? 'Online' : 'Down'}</StatusDot>
       </div>
 
-      {!state && <p className="muted">This node is down. It restarts on its own within a few seconds.</p>}
+      {!state && <p className="muted">This node is down. It restarts automatically.</p>}
 
       {state && (
         <>
@@ -59,7 +66,7 @@ export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
               <dd className="stat-blocked">{state.totals.denied}</dd>
             </div>
             <div>
-              <dt>Lease Mode</dt>
+              <dt>Mode</dt>
               <dd className="stat-mode">{displayMode(state.keys[0] || { mode: 'idle' }, state)}</dd>
             </div>
           </dl>
@@ -72,25 +79,25 @@ export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
                   <th>
                     Mode
                     <InfoTip label="About modes">
-                      <strong>Coordinated</strong>: the node is spending quota the coordinator gave it.
+                      <strong>Coordinated</strong>: spending quota granted by the coordinator.
                       <br />
-                      <strong>Idle</strong>: no quota held right now. The node asks the coordinator when the next request arrives.
+                      <strong>Idle</strong>: no quota held. The node asks for some on the next request.
                       <br />
-                      <strong>On its own</strong>: the coordinator is unreachable, so the node uses a fixed share of the limit.
+                      <strong>Local fallback</strong>: the coordinator is unreachable, so the node allows a fixed share of the limit.
                       <br />
-                      <strong>Allowing all</strong> and <strong>Blocking all</strong> only appear when the node is configured to fail open or closed.
+                      <strong>Allow all</strong> and <strong>Block all</strong> appear only if the node is set to fail open or closed.
                     </InfoTip>
                   </th>
                   <th>
-                    Quota held
-                    <InfoTip label="About quota held">
-                      How many more requests this node may allow before it needs a new share from the coordinator.
+                    Quota left
+                    <InfoTip label="About quota left">
+                      Requests this node can still allow from the share the coordinator granted, before it needs a new one.
                     </InfoTip>
                   </th>
                   <th>
-                    Burst left
-                    <InfoTip label="About burst" align="end">
-                      Requests the node can allow right now in a quick burst. It refills steadily over time.
+                    Burst tokens
+                    <InfoTip label="About burst tokens" align="end">
+                      Limits how many requests a caller can send at once. Tokens refill steadily over time.
                     </InfoTip>
                   </th>
                 </tr>
@@ -98,7 +105,7 @@ export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
               <tbody>
                 {state.keys.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="muted">No requests yet. Use Send traffic to start.</td>
+                    <td colSpan="4" className="muted">No requests yet.</td>
                   </tr>
                 )}
                 {state.keys.map((key) => {
@@ -114,7 +121,7 @@ export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
                         <div className="meter-wrap">
                           <span className="meter-text">{key.leaseRemaining ?? '0'} left</span>
                           {key.limit ? (
-                            <div className="mini-bar-track" title={`${key.leaseRemaining ?? 0} lease tokens out of ${key.limit} limit`}>
+                            <div className="mini-bar-track" title={`${key.leaseRemaining ?? 0} of ${key.limit} left`}>
                               <div
                                 className="mini-bar-fill lease-fill"
                                 style={{ width: `${Math.min(100, Math.max(0, ((key.leaseRemaining ?? 0) / key.limit) * 100))}%` }}
@@ -128,10 +135,10 @@ export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
                           <span className="meter-text">
                             {key.tokens} / {key.burst}
                             {key.tokens < key.burst && (
-                              <span className="refill-indicator" title="Tokens refilling in background steadily"> ⚡ Refilling</span>
+                              <span className="refill-indicator" title="Tokens are refilling">refilling</span>
                             )}
                           </span>
-                          <div className="mini-bar-track" title={`${key.tokens} burst tokens out of ${key.burst} burst cap`}>
+                          <div className="mini-bar-track" title={`${key.tokens} of ${key.burst} burst tokens`}>
                             <div
                               className="mini-bar-fill burst-fill"
                               style={{ width: `${Math.min(100, Math.max(0, (key.tokens / (key.burst || 1)) * 100))}%` }}
@@ -146,34 +153,36 @@ export function EdgeCard({ edge, activeEdgeId, lastDecision }) {
             </table>
           </div>
 
-          {/* Chaos Fault Impact Alert */}
           {state.faults.partitioned && (
             <div className="fault-alert-banner alert-disconnect">
-              <strong>⚠️ Disconnected from Coordinator:</strong> Cannot fetch leases. Using emergency local safety quota (1/3 share) to avoid crashing.
+              <WifiOff size={14} aria-hidden="true" />
+              <span><strong>Disconnected.</strong> {fallbackText(state)}</span>
             </div>
           )}
           {state.faults.latencyMs > 0 && (
             <div className="fault-alert-banner alert-slow">
-              <strong>🐢 Slow Network Active:</strong> +{state.faults.latencyMs}ms background sync lag.
+              <Gauge size={14} aria-hidden="true" />
+              <span><strong>Slow network.</strong> Sync is delayed by {state.faults.latencyMs} ms.</span>
             </div>
           )}
           {state.faults.lostResponseRate > 0 && (
             <div className="fault-alert-banner alert-drop">
-              <strong>📦 Dropped Replies Active:</strong> Simulating lost sync acknowledgments (60% loss).
+              <MessageSquareOff size={14} aria-hidden="true" />
+              <span><strong>Dropping replies.</strong> About {Math.round(state.faults.lostResponseRate * 100)}% of sync replies are lost.</span>
             </div>
           )}
 
-          <div className="fault-group" role="group" aria-label={`Simulate a problem on ${edge.region}`}>
+          <div className="fault-group" role="group" aria-label={`Simulate a failure on ${edge.region}`}>
             <div className="group-title">
-              Simulate a problem
-              <InfoTip label="About simulated problems">
+              Simulate a failure
+              <InfoTip label="About simulated failures">
                 <strong>Disconnect</strong>: the node cannot reach the coordinator.
                 <br />
-                <strong>Drop replies</strong>: the coordinator gets the update but the node never hears back, so it sends it again.
+                <strong>Drop replies</strong>: the coordinator receives the update but the reply is lost, so the node sends it again.
                 <br />
-                <strong>Slow network</strong>: adds 120 ms with 40 ms of variation to every check-in.
+                <strong>Slow network</strong>: adds 120 ms (plus or minus 40 ms) to every sync.
                 <br />
-                <strong>Crash node</strong>: stops the node. It restarts by itself.
+                <strong>Crash node</strong>: stops the node. It restarts automatically.
               </InfoTip>
             </div>
             <div className="controls">

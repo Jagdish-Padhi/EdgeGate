@@ -1,4 +1,4 @@
-import { BarChart3, CheckCircle2, ShieldAlert, Terminal, Trash2 } from 'lucide-react';
+import { BarChart3, CheckCircle2, ShieldCheck, Terminal, Trash2 } from 'lucide-react';
 
 export function LiveActivityFeed({ logs, onClear, totalStats }) {
   const total = totalStats?.total ?? 0;
@@ -9,20 +9,19 @@ export function LiveActivityFeed({ logs, onClear, totalStats }) {
 
   return (
     <aside className="panel activity-sidebar-panel">
-      {/* 1. TEST CONCLUSION / SUMMARY CARD */}
       <div className="test-conclusion-card">
         <div className="conclusion-head">
-          <BarChart3 size={16} className="conclusion-icon" />
-          <strong>Test Conclusion & Summary</strong>
+          <BarChart3 size={16} className="conclusion-icon" aria-hidden="true" />
+          <strong>Results</strong>
         </div>
 
         <div className="conclusion-metrics">
           <div className="conclusion-metric">
-            <span className="metric-label">Total Sent</span>
+            <span className="metric-label">Sent</span>
             <span className="metric-value">{total}</span>
           </div>
           <div className="conclusion-metric ok">
-            <span className="metric-label">Admitted</span>
+            <span className="metric-label">Allowed</span>
             <span className="metric-value">{ok} <small>({okPercent}%)</small></span>
           </div>
           <div className="conclusion-metric blocked">
@@ -35,28 +34,27 @@ export function LiveActivityFeed({ logs, onClear, totalStats }) {
           <div className="conclusion-verdict">
             {blocked > 0 ? (
               <span className="verdict-text protected">
-                <ShieldAlert size={14} /> Origin protected: {blocked} abusive/excess requests blocked at edge perimeter!
+                <ShieldCheck size={14} aria-hidden="true" /> {blocked} {blocked === 1 ? 'request was' : 'requests were'} blocked at the edge and never reached the origin.
               </span>
             ) : (
               <span className="verdict-text normal">
-                <CheckCircle2 size={14} /> All requests stayed safely within global quota.
+                <CheckCircle2 size={14} aria-hidden="true" /> All requests were within the limit.
               </span>
             )}
           </div>
         )}
       </div>
 
-      {/* 2. REAL-TIME LOG FEED */}
       <div className="panel-head log-head">
         <div>
           <h2>
             <Terminal size={15} strokeWidth={1.8} aria-hidden="true" />
-            Live Activity Feed
+            Request log
           </h2>
-          <p className="muted">Per-request decision log</p>
+          <p className="muted">Latest 50 decisions</p>
         </div>
         {logs.length > 0 && (
-          <button type="button" className="ghost icon-button" onClick={onClear} title="Clear event feed">
+          <button type="button" className="ghost icon-button" onClick={onClear} title="Clear the log">
             <Trash2 size={13} aria-hidden="true" />
             Clear
           </button>
@@ -66,16 +64,19 @@ export function LiveActivityFeed({ logs, onClear, totalStats }) {
       <div className="feed-container side-feed-container">
         {logs.length === 0 ? (
           <div className="feed-empty muted">
-            No events recorded yet. Click <strong>"Step 1"</strong> or <strong>"Send"</strong> on the left to see decisions recorded here.
+            No requests yet. Use <strong>Send</strong> on the left to start.
           </div>
         ) : (
           <ul className="feed-list">
             {logs.map((item) => (
               <li key={item.id} className={`feed-item ${item.level}`}>
-                <span className="feed-time">{item.time}</span>
-                <span className={`feed-tag tag-${item.level}`}>{item.region}</span>
+                <div className="feed-row">
+                  <span className="feed-time">{item.time}</span>
+                  <span className={`feed-tag tag-${item.level}`}>{item.region}</span>
+                  <span className="feed-outcome">{item.outcome}</span>
+                  {item.latency !== undefined && <span className="feed-latency">{item.latency} ms</span>}
+                </div>
                 <span className="feed-text">{item.message}</span>
-                {item.latency && <span className="feed-latency">{item.latency}ms</span>}
               </li>
             ))}
           </ul>

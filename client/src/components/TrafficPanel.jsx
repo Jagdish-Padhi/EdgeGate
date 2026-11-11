@@ -1,14 +1,14 @@
 import { useRef, useState } from 'react';
 import { EDGES } from '../config.js';
 import { InfoTip } from './InfoTip.jsx';
-import { Play, RotateCcw, Sparkles, StepForward } from 'lucide-react';
+import { Play, RotateCcw, StepForward } from 'lucide-react';
 
 export const CLIENTS = {
   free: { label: 'Free plan, orders API', method: 'GET', path: '/api/orders', headers: { 'x-api-key': 'key-free-acme' } },
   pro: { label: 'Pro plan, orders API', method: 'GET', path: '/api/orders', headers: { 'x-api-key': 'key-pro-globex' } },
   anonymous: { label: 'No API key, weather API', method: 'GET', path: '/api/weather', headers: {} },
   login: {
-    label: 'Login brute-force test',
+    label: 'Login attempts, wrong password',
     method: 'POST',
     path: '/auth/login',
     headers: { 'content-type': 'application/json' },
@@ -17,9 +17,9 @@ export const CLIENTS = {
 };
 
 const PRESETS = [
-  { id: 'balanced', label: 'Balanced (30)', desc: 'Even load across all 3 regions', action: { client: 'free', target: 'all', count: 30 } },
-  { id: 'burst', label: 'Mumbai Surge (50)', desc: 'Rapid traffic spike in Mumbai', action: { client: 'free', target: 'edge-mumbai', count: 50 } },
-  { id: 'pro', label: 'Pro Tier (40)', desc: 'Higher quota plan test', action: { client: 'pro', target: 'all', count: 40 } },
+  { id: 'balanced', label: 'Even load, 30 requests', desc: 'Spread evenly across all regions', action: { client: 'free', target: 'all', count: 30 } },
+  { id: 'burst', label: 'Mumbai spike, 50 requests', desc: 'Sent to Mumbai only', action: { client: 'free', target: 'edge-mumbai', count: 50 } },
+  { id: 'pro', label: 'Pro plan, 40 requests', desc: 'Pro plan has a higher limit', action: { client: 'pro', target: 'all', count: 40 } },
 ];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -41,7 +41,7 @@ export function TrafficPanel({
   const [localTarget, setLocalTarget] = useState('all');
   const [localCount, setLocalCount] = useState(30);
 
-  // Speed Presets: slow (450ms), normal (120ms), fast (20ms)
+  // Pace: slow 450 ms, normal 120 ms, fast 20 ms between requests
   const [speedMode, setSpeedMode] = useState('normal');
   const [tally, setTally] = useState(emptyTally);
   const [lastRetry, setLastRetry] = useState(null);
@@ -106,7 +106,7 @@ export function TrafficPanel({
         path: spec.path,
         method: spec.method,
         clientLabel: spec.label,
-        decision: is429 ? 'Blocked (429 Too Many Requests)' : 'Admitted (200 OK)',
+        decision: is429 ? 'Blocked' : 'Allowed',
         latency,
       });
     } catch {
@@ -118,7 +118,7 @@ export function TrafficPanel({
         path: spec.path,
         method: spec.method,
         clientLabel: spec.label,
-        decision: 'Failed (Network Error)',
+        decision: 'Failed',
         latency: Math.round(performance.now() - start),
       });
     } finally {
@@ -160,7 +160,7 @@ export function TrafficPanel({
             path: spec.path,
             method: spec.method,
             clientLabel: spec.label,
-            decision: 'Blocked (429 Too Many Requests)',
+            decision: 'Blocked',
             latency,
             step: i + 1,
             total: totalRequests,
@@ -174,7 +174,7 @@ export function TrafficPanel({
             path: spec.path,
             method: spec.method,
             clientLabel: spec.label,
-            decision: 'Admitted (200 OK)',
+            decision: 'Allowed',
             latency,
             step: i + 1,
             total: totalRequests,
@@ -189,7 +189,7 @@ export function TrafficPanel({
           path: spec.path,
           method: spec.method,
           clientLabel: spec.label,
-          decision: 'Failed / Network Error',
+          decision: 'Failed',
           latency: Math.round(performance.now() - start),
           step: i + 1,
           total: totalRequests,
@@ -228,14 +228,13 @@ export function TrafficPanel({
     <aside className="panel traffic-sidebar-panel">
       <div className="panel-head">
         <div>
-          <h2>Traffic Controller</h2>
-          <p className="muted">Configure & trigger requests</p>
+          <h2>Traffic</h2>
+          <p className="muted">Send test requests to the edge nodes</p>
         </div>
       </div>
 
-      {/* Quick 1-Click Presets */}
       <div className="sidebar-section">
-        <span className="sidebar-section-title"><Sparkles size={13} /> Quick Presets</span>
+        <span className="sidebar-section-title">Presets</span>
         <div className="preset-chip-list vertical-presets">
           {PRESETS.map((p) => (
             <button
@@ -254,7 +253,7 @@ export function TrafficPanel({
 
       <div className="sidebar-form">
         <label>
-          Caller Plan
+          Caller
           <select className="uniform-input" value={client} onChange={(event) => updateConfig({ client: event.target.value })}>
             {Object.entries(CLIENTS).map(([id, spec]) => (
               <option key={id} value={id}>{spec.label}</option>
@@ -263,9 +262,9 @@ export function TrafficPanel({
         </label>
 
         <label>
-          Target Region
+          Region
           <select className="uniform-input" value={target} onChange={(event) => updateConfig({ target: event.target.value })}>
-            <option value="all">All regions (Round-Robin)</option>
+            <option value="all">All regions, in turn</option>
             {EDGES.map((edge) => (
               <option key={edge.id} value={edge.id}>{edge.region} only</option>
             ))}
@@ -273,7 +272,7 @@ export function TrafficPanel({
         </label>
 
         <label>
-          Batch Size
+          Number of requests
           <input
             className="uniform-input"
             type="number"
@@ -291,25 +290,25 @@ export function TrafficPanel({
               type="button"
               className={`speed-btn ${speedMode === 'slow' ? 'active' : ''}`}
               onClick={() => setSpeedMode('slow')}
-              title="Slow Motion (450ms)"
+              title="450 ms between requests"
             >
-              🐢 Slow
+              Slow
             </button>
             <button
               type="button"
               className={`speed-btn ${speedMode === 'normal' ? 'active' : ''}`}
               onClick={() => setSpeedMode('normal')}
-              title="Normal (120ms)"
+              title="120 ms between requests"
             >
-              🚶 Normal
+              Normal
             </button>
             <button
               type="button"
               className={`speed-btn ${speedMode === 'fast' ? 'active' : ''}`}
               onClick={() => setSpeedMode('fast')}
-              title="Fast (20ms)"
+              title="20 ms between requests"
             >
-              ⚡ Fast
+              Fast
             </button>
           </div>
         </label>
@@ -323,7 +322,7 @@ export function TrafficPanel({
           onClick={() => executeRun()}
         >
           <Play size={14} />
-          {running ? 'Sending...' : `Send ${count} Requests`}
+          {running ? 'Sending' : `Send ${count} requests`}
         </button>
 
         <div className="button-sub-row">
@@ -332,31 +331,32 @@ export function TrafficPanel({
             className="icon-button step-btn btn-flex uniform-btn"
             disabled={running}
             onClick={() => sendSingle()}
-            title="Send 1 request (Round-robin)"
+            title="Send a single request"
           >
             <StepForward size={14} />
-            Step 1
+            Send one
           </button>
 
           <button
             type="button"
             className="ghost icon-button btn-flex uniform-btn"
             onClick={handleClear}
-            title="Clear tally numbers"
+            title="Clear the counts and results"
           >
             <RotateCcw size={13} /> Clear
           </button>
         </div>
       </div>
 
-      {lastRetry && <div className="retry-note">⚠️ 429 Throttled: Callers told to retry in {lastRetry}s</div>}
+      {lastRetry && <div className="retry-note">Rate limited. Callers are told to retry in {lastRetry}s.</div>}
 
       <div className="mini-tally-bar vertical-tally">
+        <div className="tally-head"><span>Results by region</span><span>Allowed</span><span>Blocked</span></div>
         {EDGES.map((edge) => (
           <div key={edge.id} className="mini-tally-item">
             <span className="mini-tally-region">{edge.region}</span>
             <div className="tally-badges">
-              <span className="count-badge ok" title="Allowed (200 OK)">{tally[edge.id]?.ok ?? 0}</span>
+              <span className="count-badge ok" title="Allowed (200)">{tally[edge.id]?.ok ?? 0}</span>
               <span className="count-badge blocked" title="Blocked (429)">{tally[edge.id]?.limited ?? 0}</span>
             </div>
           </div>

@@ -24,27 +24,26 @@ function Budget({ usage }) {
           <small className="sub inline">{rule}</small>
         </span>
         <span className="muted font-tabular">
-          {round(usage.used)} used / {usage.limit} limit
+          {round(usage.used)} of {usage.limit} used
         </span>
       </div>
 
-      {/* Always visible progress bar */}
-      <div className="bar" role="img" aria-label={`${round(usage.used)} used, ${reserved} reserved, ${unassigned} unassigned`}>
+      <div className="bar" role="img" aria-label={`${round(usage.used)} used, ${reserved} held by regions, ${unassigned} unassigned`}>
         <span className="seg used" style={{ width: percent(usage.used) }} title={`Used: ${round(usage.used)}`} />
         {usage.leases.map((lease) => (
           <span
             key={lease.nodeId}
             className={`seg ${NODE_CLASS[lease.nodeId] ?? 'node-0'}`}
             style={{ width: percent(lease.size) }}
-            title={`${lease.nodeId} reserved: ${lease.size}`}
+            title={`${lease.nodeId} holds ${lease.size}`}
           />
         ))}
       </div>
 
       <div className="budget-stats-row">
-        <span>Used: <strong>{round(usage.used)}</strong></span>
-        <span>Reserved by Edges: <strong>{reserved}</strong></span>
-        <span>Vault Pool: <strong>{Math.max(0, Math.round(unassigned))}</strong></span>
+        <span>Used <strong>{round(usage.used)}</strong></span>
+        <span>Held by regions <strong>{reserved}</strong></span>
+        <span>Unassigned <strong>{Math.max(0, Math.round(unassigned))}</strong></span>
       </div>
     </div>
   );
@@ -54,7 +53,7 @@ export function GlobalUsage({ keys, coordinatorUrl }) {
   const [result] = usePolling(async () => {
     try {
       await getJson(`${coordinatorUrl}/health`);
-      // Always query at least the known keys so the budget bar never disappears
+      // Query the known demo keys when no traffic has created keys yet
       const queryKeys = keys.length > 0 ? keys : ['public-api|tenant:acme', 'public-api|tenant:globex'];
       const usages = await Promise.all(
         queryKeys.slice(0, MAX_KEYS).map((key) => getJson(`${coordinatorUrl}/admin/usage?key=${encodeURIComponent(key)}`).catch(() => null))
@@ -74,15 +73,14 @@ export function GlobalUsage({ keys, coordinatorUrl }) {
         <div>
           <h2>
             <Database size={16} strokeWidth={1.8} aria-hidden="true" />
-            Global Quota Pool (Coordinator)
+            Global quota
+            <InfoTip label="About the global quota">
+              The coordinator holds the global limit and lends each region a share, called a lease. Regions report their usage back about once per sync interval, so the total never exceeds the limit.
+            </InfoTip>
           </h2>
-          <p className="muted">Shared limit tracked across all regions</p>
+          <p className="muted">Coordinator view, shared by all regions</p>
         </div>
         <StatusDot ok={online}>{online ? 'Online' : 'Down'}</StatusDot>
-      </div>
-
-      <div className="quota-explainer-banner">
-        <strong>How it works:</strong> The central Coordinator holds the master quota. It gives temporary leases to Mumbai, Frankfurt, and Virginia, preventing any single region from overspending.
       </div>
 
       <div className="budgets-container">
@@ -90,18 +88,18 @@ export function GlobalUsage({ keys, coordinatorUrl }) {
           <div className="budget-item default-preview">
             <div className="budget-head">
               <span className="budget-title">
-                <strong className="strong">acme (Free Plan)</strong>
+                <strong className="strong">acme</strong>
                 <small className="sub inline">Public API</small>
               </span>
-              <span className="muted font-tabular">0 used / 20 limit</span>
+              <span className="muted font-tabular">0 of 20 used</span>
             </div>
             <div className="bar">
               <span className="seg free" style={{ width: '100%' }} />
             </div>
             <div className="budget-stats-row">
-              <span>Used: <strong>0</strong></span>
-              <span>Reserved: <strong>0</strong></span>
-              <span>Vault Pool: <strong>20</strong></span>
+              <span>Used <strong>0</strong></span>
+              <span>Held by regions <strong>0</strong></span>
+              <span>Unassigned <strong>20</strong></span>
             </div>
           </div>
         ) : (
@@ -114,7 +112,7 @@ export function GlobalUsage({ keys, coordinatorUrl }) {
         {EDGES.map((edge, index) => (
           <span key={edge.id}><i className={`swatch node-${index}`} /> {edge.region} lease</span>
         ))}
-        <span><i className="swatch free" /> Available in Vault</span>
+        <span><i className="swatch free" /> Unassigned</span>
       </div>
 
       <div className="controls panel-footer-action">
