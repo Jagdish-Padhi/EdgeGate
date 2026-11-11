@@ -127,14 +127,15 @@ export class SyncService {
     return { ok: true };
   }
 
-  /** Global view of one key for the dashboard; null if no node holds a lease for it. */
+  /** Global view of one key for the dashboard; returns window usage and current active leases. */
   async describeKey(key) {
     const now = this.clock.now();
     const leases = await this.store.listLeases(key, now);
-    if (leases.length === 0) return null;
 
     const ruleSet = await this.store.getRuleSet();
-    const tier = tierFor(ruleSet, leases[0].ruleId, leases[0].tier);
+    const [ruleId, tenantOrTier] = key.split('|');
+    const tierName = tenantOrTier?.includes(':') ? (tenantOrTier.startsWith('tenant:globex') ? 'pro' : 'free') : 'default';
+    const tier = (leases.length > 0 ? tierFor(ruleSet, leases[0].ruleId, leases[0].tier) : null) || tierFor(ruleSet, ruleId || 'public-api', tierName) || tierFor(ruleSet, 'public-api', 'free');
     if (!tier) return null;
 
     const { id: bucketId, elapsedMs } = windowPosition(now, tier.windowMs);
@@ -143,7 +144,7 @@ export class SyncService {
 
     return {
       key,
-      ruleId: leases[0].ruleId,
+      ruleId: leases[0]?.ruleId || ruleId || 'public-api',
       limit: tier.limit,
       windowSec: tier.windowSec,
       used: Math.round(used * 100) / 100,

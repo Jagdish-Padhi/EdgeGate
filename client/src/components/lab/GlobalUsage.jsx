@@ -1,10 +1,11 @@
-import { getJson, postQuietly } from '../api/http.js';
-import { EDGES, POLL_INTERVAL_MS } from '../config.js';
-import { usePolling } from '../hooks/usePolling.js';
-import { describeKey, formatWindow } from '../lib/labels.js';
-import { InfoTip } from './InfoTip.jsx';
-import { StatusDot } from './StatusDot.jsx';
-import { Database, OctagonX } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { getJson } from '../../api/http.js';
+import { EDGES, POLL_INTERVAL_MS } from '../../config.js';
+import { usePolling } from '../../hooks/usePolling.js';
+import { describeKey } from '../../lib/labels.js';
+import { StatusDot } from '../common/StatusDot.jsx';
+import { InfoTip } from '../common/InfoTip.jsx';
+import { Database } from 'lucide-react';
 
 const NODE_CLASS = Object.fromEntries(EDGES.map((edge, index) => [edge.id, `node-${index}`]));
 const MAX_KEYS = 4;
@@ -17,7 +18,7 @@ function Budget({ usage }) {
   const { caller, rule } = describeKey(usage.key);
 
   return (
-    <div className="budget-item">
+    <div className="budget-item compact-budget">
       <div className="budget-head">
         <span className="budget-title">
           <strong className="strong">{caller}</strong>
@@ -35,7 +36,7 @@ function Budget({ usage }) {
             key={lease.nodeId}
             className={`seg ${NODE_CLASS[lease.nodeId] ?? 'node-0'}`}
             style={{ width: percent(lease.size) }}
-            title={`${lease.nodeId} holds ${lease.size}`}
+            title={`${lease.nodeId}: ${lease.size} leased`}
           />
         ))}
       </div>
@@ -49,43 +50,56 @@ function Budget({ usage }) {
   );
 }
 
-export function GlobalUsage({ keys, coordinatorUrl }) {
-  const [result] = usePolling(async () => {
+export function GlobalUsage({ keys, coordinatorUrl, lastEvent }) {
+  const [result, refreshUsage] = usePolling(async () => {
     try {
       await getJson(`${coordinatorUrl}/health`);
-      // Query the known demo keys when no traffic has created keys yet
-      const queryKeys = keys.length > 0 ? keys : ['public-api|tenant:acme', 'public-api|tenant:globex'];
-      const usages = await Promise.all(
-        queryKeys.slice(0, MAX_KEYS).map((key) => getJson(`${coordinatorUrl}/admin/usage?key=${encodeURIComponent(key)}`).catch(() => null))
-      );
-      return { online: true, usages: usages.filter(Boolean) };
+      // Consistently show only the primary acme quota (remove globex)
+      const primaryKey = keys.find((k) => k.includes('tenant:acme')) || 'public-api|tenant:acme';
+      const usage = await getJson(`${coordinatorUrl}/admin/usage?key=${encodeURIComponent(primaryKey)}`).catch(() => null);
+      return { online: true, usages: usage ? [usage] : [] };
     } catch {
       return { online: false, usages: [] };
     }
   }, POLL_INTERVAL_MS);
 
+  // Trigger immediate refresh whenever a request is completed
+  const refreshTimerRef = useRef(null);
+  useEffect(() => {
+    if (lastEvent) {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshUsage();
+      refreshTimerRef.current = setTimeout(() => {
+        refreshUsage();
+      }, 150);
+    }
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    };
+  }, [lastEvent, refreshUsage]);
+
   const online = result?.online ?? false;
   const usages = result?.usages ?? [];
 
   return (
-    <article className="panel edge-node-panel shared-quota-panel">
-      <div className="panel-head">
+    <article className="panel edge-node-panel shared-quota-panel horizontal-coordinator-card">
+      <div className="panel-head quota-head-compact">
         <div>
           <h2>
-            <Database size={16} strokeWidth={1.8} aria-hidden="true" />
-            Global quota
+            <Database size={15} strokeWidth={1.8} aria-hidden="true" />
+            <span>Global quota</span>
             <InfoTip label="About the global quota">
-              The coordinator holds the global limit and lends each region a share, called a lease. Regions report their usage back about once per sync interval, so the total never exceeds the limit.
+              Coordinator view, shared by all regions. The coordinator tracks total usage across the fleet and dispenses quotas via leases.
             </InfoTip>
           </h2>
-          <p className="muted">Coordinator view, shared by all regions</p>
+          <div className="quota-subtitle">Coordinator view, shared by all regions</div>
         </div>
         <StatusDot ok={online}>{online ? 'Online' : 'Down'}</StatusDot>
       </div>
 
-      <div className="budgets-container">
+      <div className="budgets-container horizontal-budgets">
         {usages.length === 0 ? (
-          <div className="budget-item default-preview">
+          <div className="budget-item default-preview compact-budget">
             <div className="budget-head">
               <span className="budget-title">
                 <strong className="strong">acme</strong>
@@ -113,13 +127,6 @@ export function GlobalUsage({ keys, coordinatorUrl }) {
           <span key={edge.id}><i className={`swatch node-${index}`} /> {edge.region} lease</span>
         ))}
         <span><i className="swatch free" /> Unassigned</span>
-      </div>
-
-      <div className="controls panel-footer-action">
-        <button type="button" className="danger icon-button" onClick={() => postQuietly(`${coordinatorUrl}/admin/crash`)}>
-          <OctagonX size={13} aria-hidden="true" />
-          Crash coordinator
-        </button>
       </div>
     </article>
   );

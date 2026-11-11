@@ -1,14 +1,14 @@
-import { useRef, useState } from 'react';
-import { EDGES } from '../config.js';
-import { InfoTip } from './InfoTip.jsx';
+import { useEffect, useRef, useState } from 'react';
+import { EDGES } from '../../config.js';
+import { InfoTip } from '../common/InfoTip.jsx';
 import { Play, RotateCcw, StepForward } from 'lucide-react';
 
 export const CLIENTS = {
-  free: { label: 'Free plan, orders API', method: 'GET', path: '/api/orders', headers: { 'x-api-key': 'key-free-acme' } },
-  pro: { label: 'Pro plan, orders API', method: 'GET', path: '/api/orders', headers: { 'x-api-key': 'key-pro-globex' } },
-  anonymous: { label: 'No API key, weather API', method: 'GET', path: '/api/weather', headers: {} },
+  free: { label: 'Free Plan (/api/orders)', method: 'GET', path: '/api/orders', headers: { 'x-api-key': 'key-free-acme' } },
+  pro: { label: 'Pro Plan (/api/orders)', method: 'GET', path: '/api/orders', headers: { 'x-api-key': 'key-pro-globex' } },
+  anonymous: { label: 'Anonymous IP (/api/weather)', method: 'GET', path: '/api/weather', headers: {} },
   login: {
-    label: 'Login attempts, wrong password',
+    label: 'Login Route (/auth/login)',
     method: 'POST',
     path: '/auth/login',
     headers: { 'content-type': 'application/json' },
@@ -17,9 +17,9 @@ export const CLIENTS = {
 };
 
 const PRESETS = [
-  { id: 'balanced', label: 'Even load, 30 requests', desc: 'Spread evenly across all regions', action: { client: 'free', target: 'all', count: 30 } },
-  { id: 'burst', label: 'Mumbai spike, 50 requests', desc: 'Sent to Mumbai only', action: { client: 'free', target: 'edge-mumbai', count: 50 } },
-  { id: 'pro', label: 'Pro plan, 40 requests', desc: 'Pro plan has a higher limit', action: { client: 'pro', target: 'all', count: 40 } },
+  { id: 'balanced', label: 'Even Load (30)', desc: 'Spread 30 requests across Mumbai, Frankfurt, and Virginia', action: { client: 'free', target: 'all', count: 30 } },
+  { id: 'burst', label: 'Mumbai Spike (50)', desc: 'Send 50 requests specifically to Mumbai', action: { client: 'free', target: 'edge-mumbai', count: 50 } },
+  { id: 'pro', label: 'Pro Plan (40)', desc: 'Send 40 requests using higher-tier Pro credentials', action: { client: 'pro', target: 'all', count: 40 } },
 ];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -36,6 +36,7 @@ export function TrafficPanel({
   setSimulationState,
   onImmediateRefresh,
   onResetTotals,
+  lastResetAt,
 }) {
   const [localClient, setLocalClient] = useState('free');
   const [localTarget, setLocalTarget] = useState('all');
@@ -47,6 +48,22 @@ export function TrafficPanel({
   const [lastRetry, setLastRetry] = useState(null);
 
   const stepIndexRef = useRef(0);
+  const abortControllerRef = useRef(null);
+  const runIdRef = useRef(0);
+
+  // Immediately abort any active simulation on reset
+  useEffect(() => {
+    if (lastResetAt) {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      runIdRef.current += 1;
+      setTally(emptyTally());
+      setLastRetry(null);
+      if (setRunning) setRunning(false);
+      if (setSimulationState) setSimulationState('idle');
+    }
+  }, [lastResetAt, setRunning, setSimulationState]);
 
   const client = trafficConfig?.client ?? localClient;
   const target = trafficConfig?.target ?? localTarget;
@@ -88,7 +105,10 @@ export function TrafficPanel({
         method: spec.method,
         headers: spec.headers,
         body: spec.body,
+        signal: abortControllerRef.current?.signal,
       });
+      if (abortControllerRef.current?.signal.aborted) return;
+
       const latency = Math.round(performance.now() - start);
       const is429 = response.status === 429;
       if (is429) {
@@ -110,6 +130,7 @@ export function TrafficPanel({
         latency,
       });
     } catch {
+      if (abortControllerRef.current?.signal.aborted) return;
       setTally((t) => ({ ...t, [targetEdge.id]: { ...t[targetEdge.id], failed: t[targetEdge.id].failed + 1 } }));
       onRequestDone?.({
         status: 0,
@@ -122,12 +143,21 @@ export function TrafficPanel({
         latency: Math.round(performance.now() - start),
       });
     } finally {
-      onImmediateRefresh?.();
+      if (!abortControllerRef.current?.signal.aborted) {
+        onImmediateRefresh?.();
+      }
     }
   }
 
   // Full batch execution
   async function executeRun(customSpec, customTargets, customCount, customSpeed) {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const abortCtrl = new AbortController();
+    abortControllerRef.current = abortCtrl;
+    const currentRunId = ++runIdRef.current;
+
     const spec = customSpec || CLIENTS[client];
     const targets = customTargets || (target === 'all' ? EDGES : EDGES.filter((edge) => edge.id === target));
     const totalRequests = customCount ?? count;
@@ -139,73 +169,88 @@ export function TrafficPanel({
     if (setRunning) setRunning(true);
     if (setSimulationState) setSimulationState('running');
 
-    for (let i = 0; i < totalRequests; i += 1) {
-      const edge = targets[i % targets.length];
-      const start = performance.now();
-      try {
-        const response = await fetch(`${edge.url}${spec.path}`, {
-          method: spec.method,
-          headers: spec.headers,
-          body: spec.body,
-        });
-        const latency = Math.round(performance.now() - start);
-        if (response.status === 429) {
-          next[edge.id].limited += 1;
-          const retryHeader = response.headers.get('retry-after');
-          setLastRetry(retryHeader);
-          onRequestDone?.({
-            status: 429,
-            edgeId: edge.id,
-            edgeRegion: edge.region,
-            path: spec.path,
+    try {
+      for (let i = 0; i < totalRequests; i += 1) {
+        if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
+
+        const edge = targets[i % targets.length];
+        const start = performance.now();
+        try {
+          const response = await fetch(`${edge.url}${spec.path}`, {
             method: spec.method,
-            clientLabel: spec.label,
-            decision: 'Blocked',
-            latency,
-            step: i + 1,
-            total: totalRequests,
+            headers: spec.headers,
+            body: spec.body,
+            signal: abortCtrl.signal,
           });
-        } else {
-          next[edge.id].ok += 1;
+
+          if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
+
+          const latency = Math.round(performance.now() - start);
+          if (response.status === 429) {
+            next[edge.id].limited += 1;
+            const retryHeader = response.headers.get('retry-after');
+            setLastRetry(retryHeader);
+            onRequestDone?.({
+              status: 429,
+              edgeId: edge.id,
+              edgeRegion: edge.region,
+              path: spec.path,
+              method: spec.method,
+              clientLabel: spec.label,
+              decision: 'Blocked',
+              latency,
+              step: i + 1,
+              total: totalRequests,
+            });
+          } else {
+            next[edge.id].ok += 1;
+            onRequestDone?.({
+              status: response.status,
+              edgeId: edge.id,
+              edgeRegion: edge.region,
+              path: spec.path,
+              method: spec.method,
+              clientLabel: spec.label,
+              decision: 'Allowed',
+              latency,
+              step: i + 1,
+              total: totalRequests,
+            });
+          }
+        } catch {
+          if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
+          next[edge.id].failed += 1;
           onRequestDone?.({
-            status: response.status,
+            status: 0,
             edgeId: edge.id,
             edgeRegion: edge.region,
             path: spec.path,
             method: spec.method,
             clientLabel: spec.label,
-            decision: 'Allowed',
-            latency,
+            decision: 'Failed',
+            latency: Math.round(performance.now() - start),
             step: i + 1,
             total: totalRequests,
           });
         }
-      } catch (err) {
-        next[edge.id].failed += 1;
-        onRequestDone?.({
-          status: 0,
-          edgeId: edge.id,
-          edgeRegion: edge.region,
-          path: spec.path,
-          method: spec.method,
-          clientLabel: spec.label,
-          decision: 'Failed',
-          latency: Math.round(performance.now() - start),
-          step: i + 1,
-          total: totalRequests,
-        });
-      }
-      setTally(structuredClone(next));
 
-      if (delay >= 100) {
+        if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
+        setTally(structuredClone(next));
+
+        if (delay >= 100) {
+          onImmediateRefresh?.();
+        }
+
+        if (delay > 0) await sleep(delay);
+        if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
+      }
+    } finally {
+      if (runIdRef.current === currentRunId) {
+        if (setRunning) setRunning(false);
+        if (setSimulationState) setSimulationState('idle');
         onImmediateRefresh?.();
       }
-
-      if (delay > 0) await sleep(delay);
     }
-    if (setRunning) setRunning(false);
-    if (setSimulationState) setSimulationState('idle');
-    onImmediateRefresh?.();
   }
 
   if (triggerRef) {
@@ -220,7 +265,14 @@ export function TrafficPanel({
   };
 
   const handleClear = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    runIdRef.current += 1;
+    if (setRunning) setRunning(false);
+    if (setSimulationState) setSimulationState('idle');
     setTally(emptyTally());
+    setLastRetry(null);
     onResetTotals?.();
   };
 
@@ -228,13 +280,13 @@ export function TrafficPanel({
     <aside className="panel traffic-sidebar-panel">
       <div className="panel-head">
         <div>
-          <h2>Traffic</h2>
-          <p className="muted">Send test requests to the edge nodes</p>
+          <h2>Traffic Generator</h2>
+          <p className="muted">Send requests to test rate limiting</p>
         </div>
       </div>
 
       <div className="sidebar-section">
-        <span className="sidebar-section-title">Presets</span>
+        <span className="sidebar-section-title">Quick Tests</span>
         <div className="preset-chip-list vertical-presets">
           {PRESETS.map((p) => (
             <button
@@ -253,7 +305,12 @@ export function TrafficPanel({
 
       <div className="sidebar-form">
         <label>
-          Caller
+          <span className="field-label">
+            Client Plan
+            <InfoTip label="About client plan">
+              Selects the client credentials (Free, Pro, Anonymous IP, or Login route) and API endpoint.
+            </InfoTip>
+          </span>
           <select className="uniform-input" value={client} onChange={(event) => updateConfig({ client: event.target.value })}>
             {Object.entries(CLIENTS).map(([id, spec]) => (
               <option key={id} value={id}>{spec.label}</option>
@@ -262,9 +319,14 @@ export function TrafficPanel({
         </label>
 
         <label>
-          Region
+          <span className="field-label">
+            Target Region
+            <InfoTip label="About target region">
+              Send requests round-robin across all regions, or target a single edge region.
+            </InfoTip>
+          </span>
           <select className="uniform-input" value={target} onChange={(event) => updateConfig({ target: event.target.value })}>
-            <option value="all">All regions, in turn</option>
+            <option value="all">All regions (round-robin)</option>
             {EDGES.map((edge) => (
               <option key={edge.id} value={edge.id}>{edge.region} only</option>
             ))}
@@ -272,7 +334,12 @@ export function TrafficPanel({
         </label>
 
         <label>
-          Number of requests
+          <span className="field-label">
+            Request Count
+            <InfoTip label="About request count">
+              Total number of HTTP requests to send in this test run.
+            </InfoTip>
+          </span>
           <input
             className="uniform-input"
             type="number"
@@ -284,13 +351,18 @@ export function TrafficPanel({
         </label>
 
         <label>
-          Pace
+          <span className="field-label">
+            Speed
+            <InfoTip label="About speed">
+              Delay between successive requests: Fast (20ms) tests immediate token bucket bursts; Normal (120ms) and Slow (450ms) test steady sliding windows.
+            </InfoTip>
+          </span>
           <div className="speed-toggle-group">
             <button
               type="button"
               className={`speed-btn ${speedMode === 'slow' ? 'active' : ''}`}
               onClick={() => setSpeedMode('slow')}
-              title="450 ms between requests"
+              title="450ms delay between requests"
             >
               Slow
             </button>
@@ -298,7 +370,7 @@ export function TrafficPanel({
               type="button"
               className={`speed-btn ${speedMode === 'normal' ? 'active' : ''}`}
               onClick={() => setSpeedMode('normal')}
-              title="120 ms between requests"
+              title="120ms delay between requests"
             >
               Normal
             </button>
@@ -306,7 +378,7 @@ export function TrafficPanel({
               type="button"
               className={`speed-btn ${speedMode === 'fast' ? 'active' : ''}`}
               onClick={() => setSpeedMode('fast')}
-              title="20 ms between requests"
+              title="20ms delay between requests"
             >
               Fast
             </button>
@@ -322,7 +394,7 @@ export function TrafficPanel({
           onClick={() => executeRun()}
         >
           <Play size={14} />
-          {running ? 'Sending' : `Send ${count} requests`}
+          <span>{running ? 'Sending...' : `Send ${count} Requests`}</span>
         </button>
 
         <div className="button-sub-row">
@@ -334,34 +406,23 @@ export function TrafficPanel({
             title="Send a single request"
           >
             <StepForward size={14} />
-            Send one
+            <span>Send 1 Request</span>
           </button>
 
           <button
             type="button"
             className="ghost icon-button btn-flex uniform-btn"
             onClick={handleClear}
-            title="Clear the counts and results"
+            title="Reset regional count tallies"
           >
-            <RotateCcw size={13} /> Clear
+            <RotateCcw size={13} />
+            <span>Reset Counts</span>
           </button>
         </div>
       </div>
 
-      {lastRetry && <div className="retry-note">Rate limited. Callers are told to retry in {lastRetry}s.</div>}
-
-      <div className="mini-tally-bar vertical-tally">
-        <div className="tally-head"><span>Results by region</span><span>Allowed</span><span>Blocked</span></div>
-        {EDGES.map((edge) => (
-          <div key={edge.id} className="mini-tally-item">
-            <span className="mini-tally-region">{edge.region}</span>
-            <div className="tally-badges">
-              <span className="count-badge ok" title="Allowed (200)">{tally[edge.id]?.ok ?? 0}</span>
-              <span className="count-badge blocked" title="Blocked (429)">{tally[edge.id]?.limited ?? 0}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      {lastRetry && <div className="retry-note">Rate limit reached. Retry-After: {lastRetry}s.</div>}
     </aside>
   );
 }
+

@@ -1,4 +1,4 @@
-import { BarChart3, CheckCircle2, ShieldCheck, Terminal, Trash2 } from 'lucide-react';
+import { BarChart3, Terminal, Trash2 } from 'lucide-react';
 
 export function LiveActivityFeed({ logs, onClear, totalStats }) {
   const total = totalStats?.total ?? 0;
@@ -9,10 +9,11 @@ export function LiveActivityFeed({ logs, onClear, totalStats }) {
 
   return (
     <aside className="panel activity-sidebar-panel">
+      {/* KPI Activity Summary */}
       <div className="test-conclusion-card">
         <div className="conclusion-head">
-          <BarChart3 size={16} className="conclusion-icon" aria-hidden="true" />
-          <strong>Results</strong>
+          <BarChart3 size={15} className="conclusion-icon" aria-hidden="true" />
+          <strong>Activity Summary</strong>
         </div>
 
         <div className="conclusion-metrics">
@@ -29,42 +30,26 @@ export function LiveActivityFeed({ logs, onClear, totalStats }) {
             <span className="metric-value">{blocked} <small>({blockedPercent}%)</small></span>
           </div>
         </div>
-
-        {total > 0 && (
-          <div className="conclusion-verdict">
-            {blocked > 0 ? (
-              <span className="verdict-text protected">
-                <ShieldCheck size={14} aria-hidden="true" /> {blocked} {blocked === 1 ? 'request was' : 'requests were'} blocked at the edge and never reached the origin.
-              </span>
-            ) : (
-              <span className="verdict-text normal">
-                <CheckCircle2 size={14} aria-hidden="true" /> All requests were within the limit.
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
+      {/* Live Event Log Stream */}
       <div className="panel-head log-head">
-        <div>
-          <h2>
-            <Terminal size={15} strokeWidth={1.8} aria-hidden="true" />
-            Request log
-          </h2>
-          <p className="muted">Latest 50 decisions</p>
-        </div>
+        <h2>
+          <Terminal size={15} strokeWidth={1.8} aria-hidden="true" />
+          <span>Live Event Log</span>
+        </h2>
         {logs.length > 0 && (
-          <button type="button" className="ghost icon-button" onClick={onClear} title="Clear the log">
+          <button type="button" className="ghost icon-button" onClick={onClear} title="Clear event log">
             <Trash2 size={13} aria-hidden="true" />
-            Clear
+            <span>Clear</span>
           </button>
         )}
       </div>
 
-      <div className="feed-container side-feed-container">
+      <div className="side-feed-container">
         {logs.length === 0 ? (
           <div className="feed-empty muted">
-            No requests yet. Use <strong>Send</strong> on the left to start.
+            No events yet. Choose a test on the left to start sending requests.
           </div>
         ) : (
           <ul className="feed-list">

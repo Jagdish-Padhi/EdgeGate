@@ -1,7 +1,7 @@
 import { Info } from 'lucide-react';
 import { useId } from 'react';
 
-/** Small "i" button that explains a term on hover or keyboard focus. */
+/** Small accessible "i" button that provides technical context on hover or keyboard focus */
 export function InfoTip({ label, align = 'start', children }) {
   const id = useId();
   return (
@@ -21,3 +21,4 @@ export function InfoTip({ label, align = 'start', children }) {
     </span>
   );
 }
+

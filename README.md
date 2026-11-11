@@ -19,7 +19,7 @@ It demonstrates the core distributed-systems trade-off:
 - In-memory per-edge state with bounded LRU eviction.
 - MongoDB-backed coordinator state, including MongoDB Atlas support.
 - Fault simulation for partitions, latency, jitter, lost replies, and crashes.
-- A React landing page and live operator console.
+- A React-based engineering console with an interactive technical guide manual and dedicated policy configuration workspace.
 
 The edge nodes are simulated as separate Node.js processes. The rate-limiting
 engine and admission logic are runtime-independent; the Node HTTP process is
