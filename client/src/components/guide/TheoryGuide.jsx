@@ -420,8 +420,11 @@ export function TheoryGuide({ resetKey }) {
           {activeTab.startsWith('scenario-') && (
             <div className="guide-content-card">
               <div className="canvas-header-card">
-                <div className="canvas-header-left">
-                  <span className="canvas-tag">{currentScenario.badge} · {currentScenario.category}</span>
+                <div className="algo-card-hero">
+                  <div className="algo-badge-row">
+                    <span className="algo-index-tag">{currentScenario.badge}</span>
+                    <span className="algo-domain-tag">{currentScenario.category}</span>
+                  </div>
                   <h2>{currentScenario.title}</h2>
                 </div>
               </div>
