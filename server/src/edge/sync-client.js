@@ -84,25 +84,48 @@ export class SyncClient {
     const startedAt = performance.now();
     try {
       this.inflight ??= this.#nextBatch();
-      const response = await this.faults.call(() => this.transport.send(this.inflight));
+      const batch = this.inflight;
+      const response = await this.faults.call(() => this.transport.send(batch));
       this.inflight = null;
 
       if (response.rules) this.enforcer.setRuleSet(response.rules);
       this.enforcer.applyGrants(response);
       this.enforcer.sweep();
 
-      if (this.health.consecutiveFailures > 0) this.log.info('coordinator reachable again');
+      const latencyMs = Math.round(performance.now() - startedAt);
+      if (this.health.consecutiveFailures > 0) {
+        this.log.info('coordinator reachable again — exiting fallback', {
+          seq: batch.seq,
+          latencyMs,
+          previousFailures: this.health.consecutiveFailures,
+        });
+      } else if (batch.reports.length > 0 || response.grants?.some((g) => g.size > 0) || response.rules) {
+        this.log.info('COORDINATOR SYNC', {
+          seq: batch.seq,
+          latencyMs,
+          reported: batch.reports.map((r) => `${r.key}(+${r.admitted}/-${r.denied})`),
+          leases: (response.grants ?? []).map((g) => `${g.key}=${g.size}`),
+          ...(response.rules ? { rulesUpdatedTo: response.rules.version } : {}),
+        });
+      }
+
       this.health = {
         lastSuccessAt: this.clock.now(),
         lastError: null,
         consecutiveFailures: 0,
-        lastLatencyMs: Math.round(performance.now() - startedAt),
+        lastLatencyMs: latencyMs,
       };
     } catch (err) {
       if (err.permanent) this.inflight = null;
       const failures = this.health.consecutiveFailures + 1;
       this.health = { ...this.health, lastError: err.message, consecutiveFailures: failures };
-      if (failures === 1) this.log.warn('sync failed', errorFields(err));
+      if (failures === 1 || failures % 10 === 0) {
+        this.log.warn('sync failed — using local fallback', {
+          seq: this.inflight?.seq,
+          failures,
+          ...errorFields(err),
+        });
+      }
     } finally {
       this.running = null;
     }

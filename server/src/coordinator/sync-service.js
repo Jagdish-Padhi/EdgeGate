@@ -55,12 +55,27 @@ export class SyncService {
       )
     );
 
+    const grants = settled.filter(Boolean);
+    const rulesPushed = batch.rulesVersion !== ruleSet.version;
+
+    if (batch.reports.length > 0 || rulesPushed) {
+      this.log.info('SYNC BATCH', {
+        nodeId: batch.nodeId,
+        seq: batch.seq,
+        reports: batch.reports.map((r) => `${r.key}(+${r.admitted}/-${r.denied})`),
+        grants: grants.map((g) => `${g.key}=${g.size}`),
+        ...(rulesPushed ? { rulesPushed: ruleSet.version } : {}),
+      });
+    } else {
+      this.log.debug('sync heartbeat', { nodeId: batch.nodeId, seq: batch.seq });
+    }
+
     return {
-      grants: settled.filter(Boolean),
+      grants,
       leaseTtlMs,
       serverTime: now,
       rulesVersion: ruleSet.version,
-      rules: batch.rulesVersion === ruleSet.version ? undefined : ruleSet,
+      rules: rulesPushed ? ruleSet : undefined,
     };
   }
 

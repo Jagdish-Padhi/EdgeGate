@@ -8,6 +8,7 @@ const log = createLogger('origin');
 createOriginApp({
   loginEmail: process.env.DEMO_LOGIN_EMAIL,
   loginPassword: process.env.DEMO_LOGIN_PASSWORD,
+  log,
 }).listen(config.origin.port, () => {
-  log.info(`server running on port ${config.origin.port}`);
+  log.info(`origin gateway running on port ${config.origin.port}`);
 });

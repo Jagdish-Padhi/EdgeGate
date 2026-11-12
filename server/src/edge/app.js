@@ -1,10 +1,10 @@
 import cors from 'cors';
 import express from 'express';
-import { crashHandler } from '../shared/index.js';
+import { crashHandler, silentLogger } from '../shared/index.js';
 import { RATE_LIMIT_HEADERS, rateLimit } from './middleware.js';
 import { forward } from './proxy.js';
 
-export function createEdgeApp({ nodeId, enforcer, syncClient, faults, upstreamUrl, log }) {
+export function createEdgeApp({ nodeId, enforcer, syncClient, faults, upstreamUrl, log = silentLogger }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(cors({ exposedHeaders: RATE_LIMIT_HEADERS }));
@@ -19,22 +19,28 @@ export function createEdgeApp({ nodeId, enforcer, syncClient, faults, upstreamUr
       const intervalMs = syncClient.setIntervalMs(patch.syncIntervalMs);
       enforcer.setSyncIntervalMs(intervalMs);
     }
+    const nextFaults = faults.configure(patch);
+    log.warn('fault simulation updated', {
+      ...nextFaults,
+      syncIntervalMs: syncClient.intervalMs,
+    });
     res.json({
-      ...faults.configure(patch),
+      ...nextFaults,
       syncIntervalMs: syncClient.intervalMs,
     });
   });
   app.post('/_edge/reset', (_req, res) => {
     syncClient.reset();
     faults.configure({ partitioned: false, latencyMs: 0, jitterMs: 0, lostResponseRate: 0 });
+    log.info('edge node reset to clean state');
     res.json({ ok: true, nodeId });
   });
   app.post('/_edge/crash', crashHandler(log, nodeId));
 
   // Data plane: admission control, then reverse proxy to the origin.
-  app.use(rateLimit(enforcer, syncClient));
+  app.use(rateLimit(enforcer, syncClient, log));
   app.use(express.raw({ type: () => true, limit: '1mb' }));
-  app.use((req, res) => forward(req, res, upstreamUrl));
+  app.use((req, res) => forward(req, res, upstreamUrl, log, nodeId));
 
   return app;
 }
