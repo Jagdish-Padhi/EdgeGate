@@ -42,7 +42,7 @@ export function TrafficPanel({
   const [localTarget, setLocalTarget] = useState('all');
   const [localCount, setLocalCount] = useState(30);
 
-  // Pace: slow 450 ms, normal 120 ms, fast 20 ms between requests
+  // Pace: slow 450 ms sequential, normal 120 ms sequential, fast 55 ms staggered concurrent burst
   const [speedMode, setSpeedMode] = useState('normal');
   const [tally, setTally] = useState(emptyTally);
   const [lastRetry, setLastRetry] = useState(null);
@@ -69,11 +69,11 @@ export function TrafficPanel({
   const target = trafficConfig?.target ?? localTarget;
   const count = trafficConfig?.count ?? localCount;
 
-  const getDelay = (mode) => {
-    if (mode === 'slow') return 450;
-    if (mode === 'normal') return 120;
-    return 20;
-  };
+  // Pace: slow 450ms sequential, normal 120ms sequential, fast concurrent pipelined burst
+  const FAST_STAGGER_MS = 55;
+  const MAX_CONCURRENT_FAST = 12;
+
+  const getSequentialDelay = (mode) => (mode === 'slow' ? 450 : 120);
 
   const updateConfig = (patch) => {
     if (setTrafficConfig) {
@@ -84,6 +84,53 @@ export function TrafficPanel({
       if ('count' in patch) setLocalCount(patch.count);
     }
   };
+
+  /** Executes one HTTP request against an edge node and returns normalized telemetry. */
+  async function sendHttpProbe({ edge, spec, signal, step, total }) {
+    const start = performance.now();
+    try {
+      const response = await fetch(`${edge.url}${spec.path}`, {
+        method: spec.method,
+        headers: spec.headers,
+        body: spec.body,
+        signal,
+      });
+
+      const latency = Math.round(performance.now() - start);
+      const is429 = response.status === 429;
+      return {
+        outcome: is429 ? 'limited' : 'ok',
+        retryAfter: is429 ? response.headers.get('retry-after') : null,
+        event: {
+          status: response.status,
+          edgeId: edge.id,
+          edgeRegion: edge.region,
+          path: spec.path,
+          method: spec.method,
+          clientLabel: spec.label,
+          decision: is429 ? 'Blocked' : 'Allowed',
+          latency,
+          ...(step !== undefined ? { step, total } : {}),
+        },
+      };
+    } catch {
+      return {
+        outcome: 'failed',
+        retryAfter: null,
+        event: {
+          status: 0,
+          edgeId: edge.id,
+          edgeRegion: edge.region,
+          path: spec.path,
+          method: spec.method,
+          clientLabel: spec.label,
+          decision: 'Failed',
+          latency: Math.round(performance.now() - start),
+          ...(step !== undefined ? { step, total } : {}),
+        },
+      };
+    }
+  }
 
   // Run a single request in round-robin fashion
   async function sendSingle(customSpec, customTargetEdge) {
@@ -99,57 +146,23 @@ export function TrafficPanel({
       targetEdge = EDGES.find((e) => e.id === target) || EDGES[0];
     }
 
-    const start = performance.now();
-    try {
-      const response = await fetch(`${targetEdge.url}${spec.path}`, {
-        method: spec.method,
-        headers: spec.headers,
-        body: spec.body,
-        signal: abortControllerRef.current?.signal,
-      });
-      if (abortControllerRef.current?.signal.aborted) return;
+    const signal = abortControllerRef.current?.signal;
+    const result = await sendHttpProbe({ edge: targetEdge, spec, signal });
+    if (signal?.aborted) return;
 
-      const latency = Math.round(performance.now() - start);
-      const is429 = response.status === 429;
-      if (is429) {
-        setTally((t) => ({ ...t, [targetEdge.id]: { ...t[targetEdge.id], limited: t[targetEdge.id].limited + 1 } }));
-        const retry = response.headers.get('retry-after');
-        setLastRetry(retry);
-      } else {
-        setTally((t) => ({ ...t, [targetEdge.id]: { ...t[targetEdge.id], ok: t[targetEdge.id].ok + 1 } }));
-      }
-
-      onRequestDone?.({
-        status: response.status,
-        edgeId: targetEdge.id,
-        edgeRegion: targetEdge.region,
-        path: spec.path,
-        method: spec.method,
-        clientLabel: spec.label,
-        decision: is429 ? 'Blocked' : 'Allowed',
-        latency,
-      });
-    } catch {
-      if (abortControllerRef.current?.signal.aborted) return;
-      setTally((t) => ({ ...t, [targetEdge.id]: { ...t[targetEdge.id], failed: t[targetEdge.id].failed + 1 } }));
-      onRequestDone?.({
-        status: 0,
-        edgeId: targetEdge.id,
-        edgeRegion: targetEdge.region,
-        path: spec.path,
-        method: spec.method,
-        clientLabel: spec.label,
-        decision: 'Failed',
-        latency: Math.round(performance.now() - start),
-      });
-    } finally {
-      if (!abortControllerRef.current?.signal.aborted) {
-        onImmediateRefresh?.();
-      }
-    }
+    setTally((t) => ({
+      ...t,
+      [targetEdge.id]: {
+        ...t[targetEdge.id],
+        [result.outcome]: t[targetEdge.id][result.outcome] + 1,
+      },
+    }));
+    if (result.retryAfter) setLastRetry(result.retryAfter);
+    onRequestDone?.(result.event);
+    onImmediateRefresh?.();
   }
 
-  // Full batch execution
+  // Full batch execution (sequential for slow/normal, staggered concurrent burst for fast)
   async function executeRun(customSpec, customTargets, customCount, customSpeed) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -162,87 +175,84 @@ export function TrafficPanel({
     const targets = customTargets || (target === 'all' ? EDGES : EDGES.filter((edge) => edge.id === target));
     const totalRequests = customCount ?? count;
     const currentSpeed = customSpeed || speedMode;
-    const delay = getDelay(currentSpeed);
+    const isConcurrentBurst = currentSpeed === 'fast';
 
     const next = emptyTally();
     setTally(next);
     if (setRunning) setRunning(true);
     if (setSimulationState) setSimulationState('running');
 
+    const recordResult = (edgeId, result, completedCount) => {
+      if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) return;
+      next[edgeId][result.outcome] += 1;
+      if (result.retryAfter) setLastRetry(result.retryAfter);
+      setTally(structuredClone(next));
+      onRequestDone?.(result.event);
+      // Avoid spamming state polls on every fast response; refresh periodically & sequentially
+      if (!isConcurrentBurst || completedCount % 4 === 0) {
+        onImmediateRefresh?.();
+      }
+    };
+
     try {
-      for (let i = 0; i < totalRequests; i += 1) {
-        if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
+      if (isConcurrentBurst) {
+        const inFlight = new Set();
+        let completed = 0;
 
-        const edge = targets[i % targets.length];
-        const start = performance.now();
-        try {
-          const response = await fetch(`${edge.url}${spec.path}`, {
-            method: spec.method,
-            headers: spec.headers,
-            body: spec.body,
-            signal: abortCtrl.signal,
-          });
-
+        for (let i = 0; i < totalRequests; i += 1) {
           if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
 
-          const latency = Math.round(performance.now() - start);
-          if (response.status === 429) {
-            next[edge.id].limited += 1;
-            const retryHeader = response.headers.get('retry-after');
-            setLastRetry(retryHeader);
-            onRequestDone?.({
-              status: 429,
-              edgeId: edge.id,
-              edgeRegion: edge.region,
-              path: spec.path,
-              method: spec.method,
-              clientLabel: spec.label,
-              decision: 'Blocked',
-              latency,
-              step: i + 1,
-              total: totalRequests,
-            });
-          } else {
-            next[edge.id].ok += 1;
-            onRequestDone?.({
-              status: response.status,
-              edgeId: edge.id,
-              edgeRegion: edge.region,
-              path: spec.path,
-              method: spec.method,
-              clientLabel: spec.label,
-              decision: 'Allowed',
-              latency,
-              step: i + 1,
-              total: totalRequests,
-            });
+          if (inFlight.size >= MAX_CONCURRENT_FAST) {
+            await Promise.race(inFlight);
+            if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
           }
-        } catch {
+
+          const edge = targets[i % targets.length];
+          const task = sendHttpProbe({
+            edge,
+            spec,
+            signal: abortCtrl.signal,
+            step: i + 1,
+            total: totalRequests,
+          })
+            .then((result) => {
+              completed += 1;
+              recordResult(edge.id, result, completed);
+            })
+            .finally(() => {
+              inFlight.delete(task);
+            });
+
+          inFlight.add(task);
+
+          if (i < totalRequests - 1) {
+            await sleep(FAST_STAGGER_MS);
+          }
+        }
+
+        if (inFlight.size > 0) {
+          await Promise.allSettled([...inFlight]);
+        }
+      } else {
+        const delay = getSequentialDelay(currentSpeed);
+        for (let i = 0; i < totalRequests; i += 1) {
           if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
-          next[edge.id].failed += 1;
-          onRequestDone?.({
-            status: 0,
-            edgeId: edge.id,
-            edgeRegion: edge.region,
-            path: spec.path,
-            method: spec.method,
-            clientLabel: spec.label,
-            decision: 'Failed',
-            latency: Math.round(performance.now() - start),
+
+          const edge = targets[i % targets.length];
+          const result = await sendHttpProbe({
+            edge,
+            spec,
+            signal: abortCtrl.signal,
             step: i + 1,
             total: totalRequests,
           });
+          if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
+
+          recordResult(edge.id, result, i + 1);
+          if (delay > 0 && i < totalRequests - 1) {
+            await sleep(delay);
+          }
         }
-
-        if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
-        setTally(structuredClone(next));
-
-        if (delay >= 100) {
-          onImmediateRefresh?.();
-        }
-
-        if (delay > 0) await sleep(delay);
-        if (abortCtrl.signal.aborted || runIdRef.current !== currentRunId) break;
       }
     } finally {
       if (runIdRef.current === currentRunId) {
@@ -354,7 +364,7 @@ export function TrafficPanel({
           <span className="field-label">
             Speed
             <InfoTip label="About speed">
-              Delay between successive requests: Fast (20ms) tests immediate token bucket bursts; Normal (120ms) and Slow (450ms) test steady sliding windows.
+              Slow (450ms) and Normal (120ms) send requests sequentially after each response so you can trace every hop. Fast sends staggered concurrent bursts (up to 12 in-flight) to stress-test token buckets and production limits.
             </InfoTip>
           </span>
           <div className="speed-toggle-group">
@@ -362,7 +372,7 @@ export function TrafficPanel({
               type="button"
               className={`speed-btn ${speedMode === 'slow' ? 'active' : ''}`}
               onClick={() => setSpeedMode('slow')}
-              title="450ms delay between requests"
+              title="Sequential: 450ms pause after each response"
             >
               Slow
             </button>
@@ -370,7 +380,7 @@ export function TrafficPanel({
               type="button"
               className={`speed-btn ${speedMode === 'normal' ? 'active' : ''}`}
               onClick={() => setSpeedMode('normal')}
-              title="120ms delay between requests"
+              title="Sequential: 120ms pause after each response"
             >
               Normal
             </button>
@@ -378,7 +388,7 @@ export function TrafficPanel({
               type="button"
               className={`speed-btn ${speedMode === 'fast' ? 'active' : ''}`}
               onClick={() => setSpeedMode('fast')}
-              title="20ms delay between requests"
+              title="Concurrent Burst: 55ms staggered parallel requests (up to 12 in-flight)"
             >
               Fast
             </button>
